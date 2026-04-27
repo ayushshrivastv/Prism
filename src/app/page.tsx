@@ -309,3 +309,107 @@ function getRangeWindow(range: (typeof timeRanges)[number]) {
 function createZeroReadingProgress(
   range: (typeof timeRanges)[number],
   books: Book[],
+  referenceBook?: Partial<Book> & { title?: string; author?: string },
+) {
+  const windowConfig = getRangeWindow(range);
+  const fallbackBook =
+    referenceBook ??
+    books.find((book) => book.source === "upload" && book.uploadStatus === "ready") ??
+    books.find((book) => book.source === "upload") ??
+    books[0] ?? {
+      title: "Make Something Wonderful",
+      author: "Steve Jobs",
+      progress: 0,
+      currentPage: 0,
+      totalPages: 0,
+    };
+
+  return {
+    label: windowConfig.label,
+    minutes: 0,
+    goal: windowConfig.goal,
+    timeSpent: "0m",
+    pagesRead: 0,
+    streak: "0 active days",
+    currentBook: fallbackBook.title ?? "Make Something Wonderful",
+    currentAuthor: fallbackBook.author ?? "Steve Jobs",
+    chapter: "Page 0 of 0",
+    remaining: "0 pages left",
+    topBook: {
+      title: fallbackBook.title ?? "Make Something Wonderful",
+      progress: 0,
+    },
+    bars: Array.from({ length: 12 }, () => 0),
+  };
+}
+
+function normalizeProgressBars(values: number[]) {
+  const maxBucketValue = Math.max(...values, 0);
+  if (maxBucketValue === 0) {
+    return values.map(() => 0);
+  }
+
+  return values.map((value) => Math.max(14, Math.round((value / maxBucketValue) * 100)));
+}
+
+function buildTimelineChart(values: number[]) {
+  const width = 1120;
+  const height = 100;
+  const baselineY = 78;
+  const paddingX = 20;
+  const maxRise = 52;
+  const clampedValues = values.length > 0 ? values : [0];
+  const innerWidth = width - paddingX * 2;
+  const step = clampedValues.length > 1 ? innerWidth / (clampedValues.length - 1) : 0;
+
+  const points = clampedValues.map((value, index) => {
+    const normalizedValue = Math.max(0, Math.min(100, value));
+    return {
+      x: paddingX + index * step,
+      y: baselineY - (normalizedValue / 100) * maxRise,
+    };
+  });
+
+  const linePath = points
+    .map((point, index) =>
+      `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`,
+    )
+    .join(" ");
+  const lastPoint = points[points.length - 1] ?? { x: width - paddingX, y: baselineY };
+  const areaPath = `${linePath} L ${lastPoint.x.toFixed(2)} ${baselineY} L ${points[0]?.x.toFixed(2) ?? paddingX} ${baselineY} Z`;
+
+  return {
+    width,
+    height,
+    baselineY,
+    linePath,
+    areaPath,
+    lastPoint,
+  };
+}
+
+function buildReadingProgress(
+  range: (typeof timeRanges)[number],
+  books: Book[],
+  realReadingSessions: ReadingSession[],
+) {
+  if (range === "24h") {
+    const cutoff = new Date();
+    cutoff.setHours(cutoff.getHours() - 24);
+
+    const sessions = realReadingSessions.filter((session) => new Date(session.date) >= cutoff);
+    const minutes = sessions.reduce((sum, session) => sum + session.minutes, 0);
+    const pagesRead = sessions.reduce((sum, session) => sum + session.pages, 0);
+    const fallbackBook =
+      books.find((book) => book.source === "upload" && book.uploadStatus === "ready") ??
+      books.find((book) => book.source === "upload") ??
+      books[0];
+
+    if (sessions.length === 0) {
+      return createZeroReadingProgress("24h", books, fallbackBook);
+    }
+
+    const topBookTotals = sessions.reduce<Record<string, { minutes: number; pages: number }>>(
+      (accumulator, session) => {
+        const existing = accumulator[session.bookId] ?? { minutes: 0, pages: 0 };
+        accumulator[session.bookId] = {
