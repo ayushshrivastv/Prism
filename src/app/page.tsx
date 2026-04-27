@@ -516,3 +516,107 @@ function buildReadingProgress(
         const leftPages = topBookTotals[left.id]?.pages ?? 0;
         const rightPages = topBookTotals[right.id]?.pages ?? 0;
 
+        if (right.progress !== left.progress) {
+          return right.progress - left.progress;
+        }
+
+        return rightPages - leftPages;
+      })[0] ?? books[0];
+
+  const bucketCount = 12;
+  const bars = Array.from({ length: bucketCount }, () => 0);
+
+  sessions.forEach((session) => {
+    const sessionTime = new Date(session.date).getTime();
+    const elapsed = Math.max(0, sessionTime - cutoff.getTime());
+    const totalWindow = Math.max(1, dashboardNow.getTime() - cutoff.getTime());
+    const bucketIndex = Math.min(
+      bucketCount - 1,
+      Math.floor((elapsed / totalWindow) * bucketCount),
+    );
+
+    bars[bucketIndex] += session.minutes;
+  });
+
+  const progress = {
+    label: windowConfig.label,
+    minutes,
+    goal: windowConfig.goal,
+    timeSpent: formatMinutes(minutes),
+    pagesRead,
+    streak:
+      activeDayKeys.size === 1
+        ? "1 active day"
+        : `${activeDayKeys.size} active days`,
+    currentBook: mostCompletedBook.title,
+    currentAuthor: mostCompletedBook.author,
+    chapter:
+      mostCompletedBook.progress === 100
+        ? "Finished most recently in this range"
+        : `Page ${mostCompletedBook.currentPage} of ${mostCompletedBook.totalPages}`,
+    remaining:
+      mostCompletedBook.progress === 100
+        ? "Ready to start a new book"
+        : `${mostCompletedBook.totalPages - mostCompletedBook.currentPage} pages left`,
+    topBook: {
+      title: mostCompletedBook.title,
+      progress: mostCompletedBook.progress,
+    },
+    bars: normalizeProgressBars(bars),
+  };
+
+  if (range === "30d") {
+    return {
+      ...progress,
+      currentBook: THIRTY_DAY_DUMMY_BOOK.title,
+      currentAuthor: THIRTY_DAY_DUMMY_BOOK.author,
+      chapter: `Page ${THIRTY_DAY_DUMMY_BOOK.currentPage} of ${THIRTY_DAY_DUMMY_BOOK.totalPages}`,
+      remaining: `${THIRTY_DAY_DUMMY_BOOK.totalPages - THIRTY_DAY_DUMMY_BOOK.currentPage} pages left`,
+      topBook: {
+        title: THIRTY_DAY_DUMMY_BOOK.title,
+        progress: THIRTY_DAY_DUMMY_BOOK.progress,
+      },
+    };
+  }
+
+  return progress;
+}
+
+function SidebarButton({
+  label,
+  active = false,
+  icon: Icon,
+  onClick,
+  badge,
+}: {
+  label: string;
+  active?: boolean;
+  icon: ComponentType<{ className?: string; strokeWidth?: number }>;
+  onClick?: () => void;
+  badge?: string | null;
+}) {
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={onClick}
+        className={`flex min-h-10 w-full items-center gap-2.5 rounded-[1rem] px-3 text-left text-[0.88rem] font-medium tracking-[-0.02em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/15 ${
+          active ? "bg-[#dddddb] text-[#161616]" : "text-[#2c2c2c] hover:bg-[#ececea]"
+        }`}
+      >
+        <Icon className="h-5 w-5 shrink-0" strokeWidth={2.1} />
+        <span>{label}</span>
+      </button>
+      {badge ? (
+        <p className="pl-[2.95rem] pt-1 text-[0.64rem] font-medium tracking-[-0.01em] text-[#8a8a93]">
+          {badge}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function getBasePath(path: string) {
+  const parts = path.split("/");
+  parts.pop();
+  return parts.join("/");
