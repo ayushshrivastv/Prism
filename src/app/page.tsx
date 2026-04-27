@@ -206,3 +206,106 @@ const timeRanges = ["24h", "7d", "30d", "90d"] as const;
 const cachedUser = {
   name: "ayush.shrivastv",
   badge: "Max",
+};
+
+const readerExitHintPositions = [
+  {
+    id: "top-left",
+    wrapperClassName: "left-0 top-0 items-start justify-start",
+    badgeClassName: "ml-4 mt-4 origin-top-left",
+  },
+  {
+    id: "top-right",
+    wrapperClassName: "right-0 top-0 items-start justify-end",
+    badgeClassName: "mr-4 mt-4 origin-top-right",
+  },
+  {
+    id: "bottom-left",
+    wrapperClassName: "bottom-0 left-0 items-end justify-start",
+    badgeClassName: "mb-4 ml-4 origin-bottom-left",
+  },
+  {
+    id: "bottom-right",
+    wrapperClassName: "bottom-0 right-0 items-end justify-end",
+    badgeClassName: "mb-4 mr-4 origin-bottom-right",
+  },
+] as const;
+
+type PageView = "home" | "read" | "store";
+
+const storeBooks = [
+  {
+    id: STORE_BOOK_ID,
+    title: "Make Something Wonderful",
+    author: "Steve Jobs",
+    fileName: "make-something-wonderful.epub",
+    path: STORE_BOOK_PATH,
+    coverUrl: "/books/make-something-wonderful-cover.jpg",
+  },
+] as const;
+
+const dashboardNow = new Date("2026-04-23T01:30:00+05:30");
+const THIRTY_DAY_DUMMY_BOOK = {
+  title: "Zero to One",
+  author: "Peter Thiel",
+  progress: 74,
+  currentPage: 168,
+  totalPages: 224,
+};
+
+function formatMinutes(totalMinutes: number) {
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (hours === 0) {
+    return `${minutes}m`;
+  }
+
+  return `${hours}h ${minutes}m`;
+}
+
+function formatStorageProgress(loadedBytes = 0, totalBytes = 0) {
+  const loadedMb = (loadedBytes / (1024 * 1024)).toFixed(1);
+  const totalMb = Math.max(totalBytes / (1024 * 1024), 0.1).toFixed(1);
+  return `${loadedMb} / ${totalMb} MB`;
+}
+
+function formatLoadTime(milliseconds: number) {
+  return `${(milliseconds / 1000).toFixed(2)}s`;
+}
+
+function getHighResolutionTime() {
+  return window.performance.now();
+}
+
+function createUploadedBookId(fileName: string) {
+  const sanitizedFileName = fileName.replace(/\W+/g, "-").toLowerCase();
+  const uniqueId =
+    globalThis.crypto?.randomUUID?.() ??
+    `${globalThis.Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  return `${uniqueId}-${sanitizedFileName}`;
+}
+
+function mergeBooks(seedBooks: Book[], uploadedBooks: Book[]) {
+  const merged = new Map<string, Book>();
+  [...uploadedBooks, ...seedBooks].forEach((book) => merged.set(book.id, book));
+  return Array.from(merged.values());
+}
+
+function getRangeWindow(range: (typeof timeRanges)[number]) {
+  switch (range) {
+    case "24h":
+      return { days: 1, goal: 120, label: "Today" };
+    case "7d":
+      return { days: 7, goal: 420, label: "This week" };
+    case "30d":
+      return { days: 30, goal: 1800, label: "This month" };
+    case "90d":
+      return { days: 90, goal: 5400, label: "Last 90 days" };
+  }
+}
+
+function createZeroReadingProgress(
+  range: (typeof timeRanges)[number],
+  books: Book[],
