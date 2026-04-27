@@ -620,3 +620,107 @@ function getBasePath(path: string) {
   const parts = path.split("/");
   parts.pop();
   return parts.join("/");
+}
+
+function resolveEpubPath(basePath: string, targetPath: string) {
+  const source = basePath ? `${basePath}/${targetPath}` : targetPath;
+  const segments = source.split("/");
+  const resolved: string[] = [];
+
+  segments.forEach((segment) => {
+    if (!segment || segment === ".") return;
+    if (segment === "..") {
+      resolved.pop();
+      return;
+    }
+    resolved.push(segment);
+  });
+
+  return resolved.join("/");
+}
+
+function getMimeType(path: string) {
+  const lower = path.toLowerCase();
+  if (lower.endsWith(".xhtml") || lower.endsWith(".html") || lower.endsWith(".htm")) {
+    return "application/xhtml+xml";
+  }
+  if (lower.endsWith(".css")) return "text/css";
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  if (lower.endsWith(".webp")) return "image/webp";
+  if (lower.endsWith(".gif")) return "image/gif";
+  if (lower.endsWith(".svg")) return "image/svg+xml";
+  if (lower.endsWith(".woff2")) return "font/woff2";
+  if (lower.endsWith(".woff")) return "font/woff";
+  if (lower.endsWith(".ttf")) return "font/ttf";
+  if (lower.endsWith(".otf")) return "font/otf";
+  return "application/octet-stream";
+}
+
+function sanitizeAssetTarget(targetPath: string) {
+  return targetPath.split("#")[0]?.split("?")[0] ?? targetPath;
+}
+
+function isExternalAssetTarget(targetPath: string) {
+  const normalized = targetPath.trim().toLowerCase();
+  return (
+    normalized.startsWith("data:") ||
+    normalized.startsWith("blob:") ||
+    normalized.startsWith("http://") ||
+    normalized.startsWith("https://") ||
+    normalized.startsWith("//") ||
+    normalized.startsWith("mailto:") ||
+    normalized.startsWith("tel:") ||
+    normalized.startsWith("#")
+  );
+}
+
+function arrayBufferToDataUrl(buffer: ArrayBuffer, mimeType: string) {
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    const slice = bytes.subarray(index, index + chunkSize);
+    binary += String.fromCharCode(...slice);
+  }
+
+  return `data:${mimeType};base64,${btoa(binary)}`;
+}
+
+function readBlobChunk(blob: Blob) {
+  return new Promise<ArrayBuffer>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as ArrayBuffer);
+    reader.onerror = () => reject(reader.error ?? new Error("Unable to read file chunk."));
+    reader.readAsArrayBuffer(blob);
+  });
+}
+
+async function readFileWithProgress(
+  file: File,
+  onProgress: (loadedBytes: number, totalBytes: number) => void,
+) {
+  const chunkSize = 256 * 1024;
+  const chunks: Uint8Array[] = [];
+  let loadedBytes = 0;
+
+  while (loadedBytes < file.size) {
+    const nextChunk = await readBlobChunk(file.slice(loadedBytes, loadedBytes + chunkSize));
+    const nextBytes = new Uint8Array(nextChunk);
+    chunks.push(nextBytes);
+    loadedBytes += nextBytes.byteLength;
+    onProgress(loadedBytes, file.size);
+  }
+
+  const fileBytes = new Uint8Array(file.size);
+  let writeOffset = 0;
+
+  chunks.forEach((chunk) => {
+    fileBytes.set(chunk, writeOffset);
+    writeOffset += chunk.byteLength;
+  });
+
+  return fileBytes.buffer;
+}
+
