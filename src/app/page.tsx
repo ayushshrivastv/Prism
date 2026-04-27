@@ -413,3 +413,106 @@ function buildReadingProgress(
       (accumulator, session) => {
         const existing = accumulator[session.bookId] ?? { minutes: 0, pages: 0 };
         accumulator[session.bookId] = {
+          minutes: existing.minutes + session.minutes,
+          pages: existing.pages + session.pages,
+        };
+        return accumulator;
+      },
+      {},
+    );
+
+    const activeDayKeys = new Set(
+      sessions.map((session) => new Date(session.date).toISOString().slice(0, 10)),
+    );
+
+    const currentBook =
+      books
+        .filter((book) => topBookTotals[book.id])
+        .sort((left, right) => {
+          const leftMinutes = topBookTotals[left.id]?.minutes ?? 0;
+          const rightMinutes = topBookTotals[right.id]?.minutes ?? 0;
+          if (rightMinutes !== leftMinutes) {
+            return rightMinutes - leftMinutes;
+          }
+
+          const leftPages = topBookTotals[left.id]?.pages ?? 0;
+          const rightPages = topBookTotals[right.id]?.pages ?? 0;
+          return rightPages - leftPages;
+        })[0] ?? fallbackBook;
+
+    const bucketCount = 12;
+    const bars = Array.from({ length: bucketCount }, () => 0);
+    const now = Date.now();
+    const windowStart = cutoff.getTime();
+    const totalWindow = Math.max(1, now - windowStart);
+
+    sessions.forEach((session) => {
+      const sessionTime = new Date(session.date).getTime();
+      const elapsed = Math.max(0, sessionTime - windowStart);
+      const bucketIndex = Math.min(
+        bucketCount - 1,
+        Math.floor((elapsed / totalWindow) * bucketCount),
+      );
+      bars[bucketIndex] += session.minutes;
+    });
+
+    return {
+      label: "Today",
+      minutes,
+      goal: 120,
+      timeSpent: formatMinutes(minutes),
+      pagesRead,
+      streak:
+        activeDayKeys.size === 1
+          ? "1 active day"
+          : `${activeDayKeys.size} active days`,
+      currentBook: currentBook?.title ?? "Make Something Wonderful",
+      currentAuthor: currentBook?.author ?? "Steve Jobs",
+      chapter: `Page ${currentBook?.currentPage ?? 0} of ${currentBook?.totalPages ?? 0}`,
+      remaining:
+        (currentBook?.totalPages ?? 0) > 0
+          ? `${Math.max(0, (currentBook?.totalPages ?? 0) - (currentBook?.currentPage ?? 0))} pages left`
+          : "0 pages left",
+      topBook: {
+        title: currentBook?.title ?? "Make Something Wonderful",
+        progress: currentBook?.progress ?? 0,
+      },
+      bars: normalizeProgressBars(bars),
+    };
+  }
+
+  if (range === "90d") {
+    return createZeroReadingProgress("90d", books);
+  }
+
+  const windowConfig = getRangeWindow(range);
+  const cutoff = new Date(dashboardNow);
+  cutoff.setDate(cutoff.getDate() - (windowConfig.days - 1));
+
+  const sessions = readingSessions.filter((session) => new Date(session.date) >= cutoff);
+  const minutes = sessions.reduce((sum, session) => sum + session.minutes, 0);
+  const pagesRead = sessions.reduce((sum, session) => sum + session.pages, 0);
+
+  const activeDayKeys = new Set(
+    sessions.map((session) => new Date(session.date).toISOString().slice(0, 10)),
+  );
+
+  const topBookTotals = sessions.reduce<Record<string, { minutes: number; pages: number }>>(
+    (accumulator, session) => {
+      const existing = accumulator[session.bookId] ?? { minutes: 0, pages: 0 };
+      accumulator[session.bookId] = {
+        minutes: existing.minutes + session.minutes,
+        pages: existing.pages + session.pages,
+      };
+      return accumulator;
+    },
+    {},
+  );
+
+  const mostCompletedBook =
+    books
+      .filter((book) => topBookTotals[book.id])
+      .sort((left, right) => {
+        const leftPages = topBookTotals[left.id]?.pages ?? 0;
+        const rightPages = topBookTotals[right.id]?.pages ?? 0;
+
