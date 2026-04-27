@@ -102,3 +102,107 @@ type ReaderFastPreviewChunk = {
 };
 
 type EpubBookInstance = import("epubjs").Book;
+type EpubRenditionInstance = import("epubjs").Rendition;
+type EpubLocation = import("epubjs").Location;
+type AuthViewState = "loading" | "authenticated" | "unauthenticated";
+
+const UPLOADED_BOOK_SUMMARIES_KEY = "prism-uploaded-book-summaries-v1";
+const READING_SESSIONS_KEY = "prism-reading-sessions-v1";
+const LIBRARY_DB_NAME = "prism-library";
+const LIBRARY_DB_VERSION = 1;
+const LIBRARY_STORE_NAME = "uploaded-books";
+const STORE_BOOK_ID = "store-make-something-wonderful";
+const STORE_BOOK_PATH = "/books/make-something-wonderful.epub";
+const SHOULD_BYPASS_AUTH_IN_DEV = process.env.NODE_ENV === "development";
+
+const initialBooks: Book[] = [
+  {
+    id: "psychology-money",
+    title: "The Psychology of Money",
+    author: "Morgan Housel",
+    progress: 70,
+    totalPages: 256,
+    currentPage: 179,
+    status: "reading",
+    source: "seed",
+  },
+  {
+    id: "deep-work",
+    title: "Deep Work",
+    author: "Cal Newport",
+    progress: 92,
+    totalPages: 304,
+    currentPage: 280,
+    status: "reading",
+    source: "seed",
+  },
+  {
+    id: "atomic-habits",
+    title: "Atomic Habits",
+    author: "James Clear",
+    progress: 100,
+    totalPages: 320,
+    currentPage: 320,
+    status: "finished",
+    source: "seed",
+  },
+  {
+    id: "ikigai",
+    title: "Ikigai",
+    author: "Hector Garcia",
+    progress: 48,
+    totalPages: 208,
+    currentPage: 100,
+    status: "reading",
+    source: "seed",
+  },
+];
+
+const readingSessions = [
+  { bookId: "psychology-money", date: "2026-04-23T00:10:00+05:30", minutes: 24, pages: 14 },
+  { bookId: "deep-work", date: "2026-04-22T22:30:00+05:30", minutes: 36, pages: 18 },
+  { bookId: "psychology-money", date: "2026-04-22T19:20:00+05:30", minutes: 28, pages: 12 },
+  { bookId: "ikigai", date: "2026-04-21T21:45:00+05:30", minutes: 42, pages: 20 },
+  { bookId: "deep-work", date: "2026-04-20T20:00:00+05:30", minutes: 58, pages: 24 },
+  { bookId: "psychology-money", date: "2026-04-19T22:10:00+05:30", minutes: 34, pages: 17 },
+  { bookId: "psychology-money", date: "2026-04-18T18:40:00+05:30", minutes: 51, pages: 28 },
+  { bookId: "ikigai", date: "2026-04-17T23:05:00+05:30", minutes: 27, pages: 10 },
+  { bookId: "deep-work", date: "2026-04-16T21:15:00+05:30", minutes: 44, pages: 21 },
+  { bookId: "psychology-money", date: "2026-04-15T19:05:00+05:30", minutes: 62, pages: 30 },
+  { bookId: "atomic-habits", date: "2026-04-14T20:50:00+05:30", minutes: 39, pages: 22 },
+  { bookId: "deep-work", date: "2026-04-13T22:15:00+05:30", minutes: 49, pages: 19 },
+  { bookId: "psychology-money", date: "2026-04-12T21:40:00+05:30", minutes: 66, pages: 32 },
+  { bookId: "ikigai", date: "2026-04-11T18:10:00+05:30", minutes: 33, pages: 14 },
+  { bookId: "deep-work", date: "2026-04-10T22:25:00+05:30", minutes: 57, pages: 25 },
+  { bookId: "atomic-habits", date: "2026-04-08T20:35:00+05:30", minutes: 41, pages: 20 },
+  { bookId: "deep-work", date: "2026-04-05T19:25:00+05:30", minutes: 53, pages: 26 },
+  { bookId: "psychology-money", date: "2026-04-02T21:20:00+05:30", minutes: 48, pages: 18 },
+  { bookId: "ikigai", date: "2026-03-28T20:40:00+05:30", minutes: 38, pages: 16 },
+  { bookId: "atomic-habits", date: "2026-03-24T19:50:00+05:30", minutes: 46, pages: 23 },
+  { bookId: "deep-work", date: "2026-03-18T21:40:00+05:30", minutes: 52, pages: 24 },
+  { bookId: "psychology-money", date: "2026-03-10T20:15:00+05:30", minutes: 61, pages: 29 },
+  { bookId: "ikigai", date: "2026-02-25T22:05:00+05:30", minutes: 32, pages: 13 },
+] as const;
+
+const updates = [
+  {
+    title: "ElevenLabs voices are now available in Prism",
+    time: "2 days ago",
+    description:
+      "Listen to books with more natural narration, clearer pacing, and richer voice options for long reading sessions.",
+    icon: ImageIcon,
+  },
+  {
+    title: "Built with Kiro IDE",
+    time: "8 days ago",
+    description:
+      "Prism is now being shaped with Kiro IDE, helping us move faster on reading workflows, UI polish, and book-first improvements.",
+    icon: Bot,
+  },
+];
+
+const timeRanges = ["24h", "7d", "30d", "90d"] as const;
+
+const cachedUser = {
+  name: "ayush.shrivastv",
+  badge: "Max",
