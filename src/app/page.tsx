@@ -1552,3 +1552,107 @@ async function paginatePreviewBlocks(
       return paginatedPages.length >= pageLimit;
     };
 
+    const placeBlockOnFreshPage = (blockMarkup: string) => {
+      currentPageBlocks = [blockMarkup];
+      setMeasurePage(currentPageBlocks);
+
+      if (!pageOverflows()) {
+        return false;
+      }
+
+      const fittedMediaMarkup = createMediaPageFittedBlock(blockMarkup);
+      if (fittedMediaMarkup) {
+        currentPageBlocks = [fittedMediaMarkup];
+        setMeasurePage(currentPageBlocks);
+
+        if (!pageOverflows()) {
+          return false;
+        }
+      }
+
+      const splitPages = splitOversizedTextBlock(blockMarkup);
+      if (!splitPages || splitPages.length === 0) {
+        return commitPage();
+      }
+
+      const pagesToCommit = splitPages.slice(0, -1);
+      const trailingPage = splitPages[splitPages.length - 1] ?? "";
+
+      for (const pageMarkup of pagesToCommit) {
+        paginatedPages.push(pageMarkup);
+        if (paginatedPages.length >= pageLimit) {
+          currentPageBlocks = [];
+          setMeasurePage([]);
+          return true;
+        }
+      }
+
+      currentPageBlocks = trailingPage ? [trailingPage] : [];
+      setMeasurePage(currentPageBlocks);
+
+      if (currentPageBlocks.length > 0 && pageOverflows()) {
+        return commitPage();
+      }
+
+      return false;
+    };
+
+    for (const blockMarkup of collectedBlocks) {
+      const nextPageBlocks = [...currentPageBlocks, blockMarkup];
+      setMeasurePage(nextPageBlocks);
+
+      if (!pageOverflows()) {
+        currentPageBlocks = nextPageBlocks;
+        continue;
+      }
+
+      const splitAcrossCurrentPage = splitTextBlockAcrossCurrentPage(
+        blockMarkup,
+        currentPageBlocks,
+      );
+      if (splitAcrossCurrentPage) {
+        currentPageBlocks = [...currentPageBlocks, splitAcrossCurrentPage.fittingMarkup];
+
+        if (commitPage()) {
+          return paginatedPages;
+        }
+
+        if (placeBlockOnFreshPage(splitAcrossCurrentPage.trailingMarkup)) {
+          return paginatedPages;
+        }
+
+        continue;
+      }
+
+      if (commitPage()) {
+        return paginatedPages;
+      }
+
+      if (placeBlockOnFreshPage(blockMarkup)) {
+        return paginatedPages;
+      }
+    }
+
+    if (currentPageBlocks.length > 0) {
+      paginatedPages.push(currentPageBlocks.join("\n"));
+    }
+
+    return paginatedPages;
+  } catch (error) {
+    console.error("Unable to paginate EPUB preview blocks accurately.", error);
+    return fallbackPaginatePreviewBlocks(collectedBlocks, pageLimit);
+  } finally {
+    measurementHost.remove();
+  }
+}
+
+function collectReadablePreviewBlocks(root: Element) {
+  const directChildren = Array.from(root.children);
+  if (directChildren.length === 0) return [];
+
+  const leafSelector =
+    "h1, h2, h3, h4, h5, h6, p, blockquote, figure, img, ul, ol, pre, table, hr";
+  const containerTags = new Set(["DIV", "SECTION", "ARTICLE", "MAIN", "ASIDE"]);
+  const readableBlocks: Element[] = [];
+
+  for (const child of directChildren) {
