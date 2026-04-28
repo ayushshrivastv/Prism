@@ -1034,3 +1034,107 @@ function createFastPreviewDocument(spreadsHtml: string[], headMarkup: string) {
       border-left: 1px solid rgba(28, 27, 25, 0.16);
       font-style: italic;
     }
+    :where(.prism-fast-page ul, .prism-fast-page ol) {
+      padding-left: 1.1em;
+    }
+    :where(.prism-fast-page pre, .prism-fast-page code) {
+      white-space: pre-wrap !important;
+      word-break: break-word !important;
+    }
+    :where(.prism-fast-page table, .prism-fast-page pre) {
+      width: 100%;
+      overflow-x: hidden;
+    }
+    :where(.prism-fast-page h1, .prism-fast-page h2, .prism-fast-page h3, .prism-fast-page h4, .prism-fast-page h5, .prism-fast-page h6) {
+      margin-top: 0;
+      margin-bottom: 0.7em;
+      text-wrap: balance;
+      line-height: 1.14;
+      letter-spacing: -0.01em;
+      break-after: avoid;
+    }
+    :where(.prism-fast-page h1) {
+      font-size: clamp(2.4rem, 3vw, 3.6rem);
+    }
+    :where(.prism-fast-page h2) {
+      font-size: clamp(1.9rem, 2.3vw, 2.8rem);
+    }
+    :where(.prism-fast-page h3) {
+      font-size: clamp(1.4rem, 1.5vw, 1.8rem);
+    }
+    :where(.prism-fast-page a) {
+      color: inherit;
+      text-decoration-color: rgba(28, 27, 25, 0.28);
+      text-underline-offset: 0.15em;
+    }
+    :where(.prism-fast-page hr) {
+      margin: 1.35em auto;
+      width: 22%;
+      border: 0;
+      border-top: 1px solid rgba(28, 27, 25, 0.12);
+    }
+    ::selection {
+      background: rgba(255, 221, 87, 0.72);
+    }
+    @media (max-width: 1024px) {
+      .prism-fast-spread {
+        grid-template-columns: 1fr;
+        gap: 0;
+        padding: 18px 22px 24px;
+      }
+      .prism-fast-spread::before {
+        display: none;
+      }
+      .prism-fast-page {
+        min-height: 100%;
+        padding: 0;
+      }
+      :where(body) {
+        font-size: 16px;
+      }
+      :where(.prism-fast-page .prism-fast-page-media img, .prism-fast-page .prism-fast-page-media svg, .prism-fast-page .prism-fast-page-media video, .prism-fast-page .prism-fast-page-media canvas) {
+        max-height: min(100%, 24vh);
+      }
+      :where(.prism-fast-page img, .prism-fast-page svg, .prism-fast-page video, .prism-fast-page canvas) {
+        max-height: 26vh;
+      }
+    }
+  `;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    ${headMarkup}
+    <style>${fastPreviewStyles}</style>
+  </head>
+  <body>
+    <main id="prism-preview-track">
+      ${spreadsHtml.join("\n")}
+    </main>
+  </body>
+</html>`;
+}
+
+function fallbackPaginatePreviewBlocks(collectedBlocks: string[], pageLimit = Number.POSITIVE_INFINITY) {
+  const pages: string[] = [];
+  const maxPageWeight = 170;
+  let currentPageBlocks: string[] = [];
+  let currentPageWeight = 0;
+
+  const estimateBlockWeight = (blockMarkup: string) => {
+    const plainText = blockMarkup.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    let weight = Math.max(10, Math.ceil(plainText.length / 70));
+
+    if (/<h[1-6]\b/i.test(blockMarkup)) weight += 8;
+    if (/<img|<figure|<svg|<video|<canvas/i.test(blockMarkup)) weight += 26;
+    if (/<blockquote|<ul|<ol|<table|<pre/i.test(blockMarkup)) weight += 18;
+
+    return weight;
+  };
+
+  for (const blockMarkup of collectedBlocks) {
+    const nextWeight = estimateBlockWeight(blockMarkup);
+
+    if (
