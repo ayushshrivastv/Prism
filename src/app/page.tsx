@@ -931,3 +931,106 @@ function createFastPreviewDocument(spreadsHtml: string[], headMarkup: string) {
       position: relative;
       width: 100%;
       min-width: 100%;
+      height: 100%;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: clamp(24px, 2.8vw, 46px);
+      box-sizing: border-box;
+      padding: clamp(20px, 2.4vw, 34px) clamp(30px, 4.4vw, 58px) clamp(22px, 2.7vw, 36px);
+      align-items: stretch;
+      scroll-snap-align: start;
+      background: var(--prism-paper);
+      overflow: hidden;
+    }
+    .prism-fast-spread::before {
+      content: "";
+      position: absolute;
+      top: clamp(16px, 2vw, 28px);
+      bottom: clamp(18px, 2.3vw, 30px);
+      left: 50%;
+      width: 1px;
+      transform: translateX(-0.5px);
+      background: linear-gradient(180deg, transparent 0%, var(--prism-gutter) 8%, var(--prism-gutter) 92%, transparent 100%);
+      pointer-events: none;
+    }
+    .prism-fast-page {
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      max-width: 100%;
+      overflow: hidden;
+      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
+      padding: clamp(8px, 0.8vw, 14px) clamp(4px, 0.5vw, 10px) clamp(10px, 1vw, 16px);
+      border: none;
+      background: transparent;
+    }
+    .prism-fast-page > * {
+      flex-shrink: 0;
+      max-width: 100%;
+      overflow-x: hidden;
+      box-sizing: border-box;
+    }
+    :where(.prism-fast-page > :last-child) {
+      margin-bottom: 0 !important;
+    }
+    :where(.prism-fast-page p) {
+      margin: 0 0 0.72em;
+      text-wrap: pretty;
+      orphans: 2;
+      widows: 2;
+    }
+    :where(.prism-fast-page figure) {
+      margin: 0.15em 0 1em;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    :where(.prism-fast-page .prism-fast-page-media) {
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) auto;
+      align-items: center;
+      max-height: 100%;
+      height: 100%;
+      min-height: 0;
+      overflow: hidden;
+      margin: 0.1em 0 0.8em;
+    }
+    :where(.prism-fast-page figcaption) {
+      margin-top: 0.72em;
+      font-size: 0.84em;
+      line-height: 1.35;
+      text-align: center;
+      color: var(--prism-muted);
+      font-style: italic;
+    }
+    :where(.prism-fast-page .prism-fast-page-media > img, .prism-fast-page .prism-fast-page-media > svg, .prism-fast-page .prism-fast-page-media > video, .prism-fast-page .prism-fast-page-media > canvas) {
+      width: 100%;
+      max-height: 100%;
+      min-height: 0;
+    }
+    :where(.prism-fast-page .prism-fast-page-media img, .prism-fast-page .prism-fast-page-media svg, .prism-fast-page .prism-fast-page-media video, .prism-fast-page .prism-fast-page-media canvas) {
+      max-height: min(100%, 30vh);
+    }
+    :where(.prism-fast-page .prism-fast-page-media figcaption) {
+      margin-top: 0.5em;
+    }
+    :where(.prism-fast-page img, .prism-fast-page svg, .prism-fast-page video, .prism-fast-page canvas) {
+      max-width: 100%;
+      max-height: 34vh;
+      height: auto;
+      object-fit: contain;
+      display: block;
+      margin: 0 auto;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    :where(.prism-fast-page blockquote, .prism-fast-page ul, .prism-fast-page ol, .prism-fast-page pre, .prism-fast-page table) {
+      margin: 0.15em 0 0.95em;
+      max-width: 100%;
+    }
+    :where(.prism-fast-page blockquote) {
+      padding-left: 1em;
+      border-left: 1px solid rgba(28, 27, 25, 0.16);
+      font-style: italic;
+    }
