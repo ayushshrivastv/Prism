@@ -1863,3 +1863,107 @@ async function extractFastPreviewChunkFromEpub(
       stylesheetLinks.map(async (link) => {
         const stylesheetTarget = link.getAttribute("href") ?? "";
         const stylesheetBlobUrl = await ensureStylesheetBlobUrl(
+          stylesheetTarget,
+          chapterBasePath,
+        );
+        if (stylesheetBlobUrl) {
+          resolvedHeadEntries.set(
+            `${chapterBasePath}:${stylesheetTarget}`,
+            `<link rel="stylesheet" href="${stylesheetBlobUrl}" />`,
+          );
+        }
+      }),
+    );
+
+    const inlineStyles = Array.from(chapterHead?.querySelectorAll("style") ?? []);
+    const rewrittenInlineStyles = await Promise.all(
+      inlineStyles.map(async (styleElement, styleIndex) => {
+        const rewrittenCss = await rewriteCssAssetUrls(
+          styleElement.textContent ?? "",
+          spineDocumentPath,
+        );
+        resolvedHeadEntries.set(
+          `${spineDocumentPath}:inline-style-${styleIndex}`,
+          `<style>${rewrittenCss}</style>`,
+        );
+      }),
+    );
+    void rewrittenInlineStyles;
+
+    const assetElements = Array.from(
+      chapterBody.querySelectorAll<HTMLElement>(
+        "img[src], source[src], video[poster], image[href], image[xlink\\:href]",
+      ),
+    );
+
+    await Promise.all(
+      assetElements.map(async (element) => {
+        if (element instanceof HTMLImageElement) {
+          const sourceTarget = element.getAttribute("src") ?? "";
+          const blobUrl = await ensureAssetBlobUrl(sourceTarget, chapterBasePath);
+          if (blobUrl) {
+            element.setAttribute("src", blobUrl);
+          }
+          return;
+        }
+
+        const sourceTarget =
+          element.getAttribute("src") ??
+          element.getAttribute("poster") ??
+          element.getAttribute("href") ??
+          element.getAttribute("xlink:href") ??
+          "";
+        const blobUrl = await ensureAssetBlobUrl(sourceTarget, chapterBasePath);
+        if (!blobUrl) return;
+
+        if (element.hasAttribute("src")) {
+          element.setAttribute("src", blobUrl);
+        } else if (element.hasAttribute("poster")) {
+          element.setAttribute("poster", blobUrl);
+        } else if (element.hasAttribute("href")) {
+          element.setAttribute("href", blobUrl);
+        } else {
+          element.setAttribute("xlink:href", blobUrl);
+        }
+      }),
+    );
+
+    const blockElements = collectReadablePreviewBlocks(chapterBody);
+
+    if (blockElements.length === 0) {
+      const bodyText = chapterBody.textContent?.replace(/\s+/g, " ").trim() ?? "";
+      if (!bodyText) continue;
+
+      collectedBlocks.push(`<p>${bodyText}</p>`);
+      continue;
+    }
+
+    for (const blockElement of blockElements) {
+      const blockText = blockElement.textContent?.replace(/\s+/g, " ").trim() ?? "";
+      if (!blockText) continue;
+
+      const normalizedBlockMarkup =
+        blockElement.tagName === "IMG"
+          ? `<figure>${blockElement.outerHTML}</figure>`
+          : blockElement.outerHTML;
+
+      collectedBlocks.push(normalizedBlockMarkup);
+    }
+  }
+
+  const allPaginatedPages = await paginatePreviewBlocks(
+    collectedBlocks,
+    Array.from(resolvedHeadEntries.values()).join("\n"),
+    skipPages + maxPages + 1,
+  );
+  const collectedPages = allPaginatedPages.slice(skipPages, skipPages + maxPages);
+  const hasMore = allPaginatedPages.length > skipPages + maxPages;
+
+  if (collectedPages.length === 0) {
+    throw new Error("Unable to extract preview pages from this EPUB.");
+  }
+
+  const previewSpreads = Array.from(
+    { length: Math.ceil(collectedPages.length / 2) },
+    (_, spreadIndex) => {
+      const leftPageMarkup = collectedPages[spreadIndex * 2] ?? "";
