@@ -1967,3 +1967,106 @@ async function extractFastPreviewChunkFromEpub(
     { length: Math.ceil(collectedPages.length / 2) },
     (_, spreadIndex) => {
       const leftPageMarkup = collectedPages[spreadIndex * 2] ?? "";
+      const rightPageMarkup = collectedPages[spreadIndex * 2 + 1] ?? "";
+
+      return `
+        <section class="prism-fast-spread">
+          <article class="prism-fast-page prism-fast-page-left">${leftPageMarkup}</article>
+          <article class="prism-fast-page prism-fast-page-right">${rightPageMarkup}</article>
+        </section>
+      `;
+    },
+  );
+
+  return {
+    spreadsHtml: previewSpreads,
+    cleanupUrls,
+    spreadCount: Math.max(1, previewSpreads.length),
+    pageCount: collectedPages.length,
+    hasMore,
+    headMarkup: Array.from(resolvedHeadEntries.values()).join("\n"),
+  };
+}
+
+async function buildFastPreviewFromEpub(fileBuffer: ArrayBuffer): Promise<ReaderFastPreview> {
+  const initialChunk = await extractFastPreviewChunkFromEpub(fileBuffer, {
+    skipPages: 0,
+    maxPages: 20,
+  });
+  const previewDocument = createFastPreviewDocument(
+    initialChunk.spreadsHtml,
+    initialChunk.headMarkup,
+  );
+  const previewUrl = URL.createObjectURL(new Blob([previewDocument], { type: "text/html" }));
+
+  return {
+    url: previewUrl,
+    cleanupUrls: [...initialChunk.cleanupUrls, previewUrl],
+    spreadCount: initialChunk.spreadCount,
+    pageCount: initialChunk.pageCount,
+  };
+}
+
+function UpdatesIcon({
+  icon: Icon,
+}: {
+  icon: ComponentType<{ className?: string; strokeWidth?: number }>;
+}) {
+  return (
+    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#d9ecff]">
+      <Icon className="h-8 w-8 text-[#181818]" strokeWidth={1.9} />
+    </div>
+  );
+}
+
+function GoogleIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-5 w-5"
+      fill="none"
+    >
+      <path
+        d="M21.805 12.23c0-.7-.062-1.372-.178-2.017H12.25v3.817h5.36a4.59 4.59 0 0 1-1.992 3.013v2.5h3.223c1.886-1.736 2.964-4.294 2.964-7.313Z"
+        fill="#4285F4"
+      />
+      <path
+        d="M12.25 22c2.688 0 4.94-.892 6.586-2.42l-3.223-2.5c-.895.602-2.04.958-3.363.958-2.59 0-4.783-1.749-5.565-4.1H3.353v2.58A9.95 9.95 0 0 0 12.25 22Z"
+        fill="#34A853"
+      />
+      <path
+        d="M6.685 13.938A5.98 5.98 0 0 1 6.373 12c0-.673.116-1.326.312-1.938V7.482H3.353A9.95 9.95 0 0 0 2.25 12c0 1.602.384 3.117 1.103 4.518l3.332-2.58Z"
+        fill="#FBBC04"
+      />
+      <path
+        d="M12.25 5.962c1.463 0 2.776.503 3.81 1.49l2.857-2.857C17.186 2.99 14.934 2 12.25 2a9.95 9.95 0 0 0-8.897 5.482l3.332 2.58c.782-2.352 2.975-4.1 5.565-4.1Z"
+        fill="#EA4335"
+      />
+    </svg>
+  );
+}
+
+export default function HomePage() {
+  const [currentPage, setCurrentPage] = useState<PageView>("home");
+  const [authStatus, setAuthStatus] = useState<AuthViewState>("loading");
+  const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
+  const [authActionError, setAuthActionError] = useState<string | null>(null);
+  const [isSigningIn, setIsSigningIn] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const [skipAuthOnLocalhost] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const hostname = window.location.hostname;
+    return hostname === "localhost" || hostname === "127.0.0.1";
+  });
+  const [selectedRange, setSelectedRange] =
+    useState<(typeof timeRanges)[number]>("24h");
+  const [comingSoonLabel, setComingSoonLabel] = useState<string | null>(null);
+  const [books, setBooks] = useState<Book[]>(initialBooks);
+  const [realReadingSessions, setRealReadingSessions] = useState<ReadingSession[]>(() => {
+    if (typeof window === "undefined") return [];
+
+    try {
+      const storedSessions = window.localStorage.getItem(READING_SESSIONS_KEY);
+      if (!storedSessions) return [];
+
