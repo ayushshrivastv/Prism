@@ -1138,3 +1138,107 @@ function fallbackPaginatePreviewBlocks(collectedBlocks: string[], pageLimit = Nu
     const nextWeight = estimateBlockWeight(blockMarkup);
 
     if (
+      currentPageBlocks.length > 0 &&
+      currentPageWeight + nextWeight > maxPageWeight
+    ) {
+      pages.push(currentPageBlocks.join("\n"));
+      if (pages.length >= pageLimit) return pages;
+      currentPageBlocks = [];
+      currentPageWeight = 0;
+    }
+
+    currentPageBlocks.push(blockMarkup);
+    currentPageWeight += nextWeight;
+  }
+
+  if (currentPageBlocks.length > 0) {
+    pages.push(currentPageBlocks.join("\n"));
+  }
+
+  return pages.slice(0, pageLimit);
+}
+
+async function waitForPreviewStylesheets(root: ParentNode) {
+  const stylesheetLinks = Array.from(root.querySelectorAll<HTMLLinkElement>('link[rel~="stylesheet"]'));
+
+  await Promise.all(
+    stylesheetLinks.map((link) => {
+      if (link.sheet) {
+        return Promise.resolve();
+      }
+
+      return new Promise<void>((resolve) => {
+        let settled = false;
+
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          resolve();
+        };
+
+        link.addEventListener("load", finish, { once: true });
+        link.addEventListener("error", finish, { once: true });
+        window.setTimeout(finish, 300);
+      });
+    }),
+  );
+}
+
+async function paginatePreviewBlocks(
+  collectedBlocks: string[],
+  headMarkup: string,
+  pageLimit = Number.POSITIVE_INFINITY,
+): Promise<string[]> {
+  if (collectedBlocks.length === 0) return [];
+
+  if (
+    typeof window === "undefined" ||
+    typeof document === "undefined" ||
+    !document.body ||
+    typeof Element === "undefined"
+  ) {
+    return fallbackPaginatePreviewBlocks(collectedBlocks, pageLimit);
+  }
+
+  const viewportWidth = Math.max(720, window.innerWidth - 40);
+  const viewportHeight = Math.max(520, window.innerHeight - 120);
+  const compactLayout = window.innerWidth <= 1024;
+  const clampNumber = (value: number, minimum: number, maximum: number) =>
+    Math.min(maximum, Math.max(minimum, value));
+  const spreadGap = compactLayout ? 10 : Math.round(clampNumber(viewportWidth * 0.028, 24, 46));
+  const spreadPaddingX = compactLayout ? 22 : Math.round(clampNumber(viewportWidth * 0.044, 30, 58));
+  const spreadPaddingTop = compactLayout ? 18 : Math.round(clampNumber(viewportWidth * 0.024, 20, 34));
+  const spreadPaddingBottom = compactLayout ? 24 : Math.round(clampNumber(viewportWidth * 0.027, 22, 36));
+  const gutterTop = compactLayout ? 0 : Math.max(16, spreadPaddingTop - 4);
+  const gutterBottom = compactLayout ? 0 : Math.max(18, spreadPaddingBottom - 4);
+  const pagePaddingTop = compactLayout ? 0 : Math.round(clampNumber(viewportWidth * 0.008, 8, 14));
+  const pagePaddingX = compactLayout ? 0 : Math.round(clampNumber(viewportWidth * 0.005, 4, 10));
+  const pagePaddingBottom = compactLayout ? 0 : Math.round(clampNumber(viewportWidth * 0.009, 10, 16));
+  const pageFontSize = compactLayout ? 16 : clampNumber(viewportWidth * 0.0098, 16, 18);
+  const pageImageMaxHeight = compactLayout
+    ? Math.round(viewportHeight * 0.26)
+    : Math.round(viewportHeight * 0.34);
+
+  const measurementHost = document.createElement("div");
+  measurementHost.setAttribute("aria-hidden", "true");
+  measurementHost.style.position = "fixed";
+  measurementHost.style.left = "-100000px";
+  measurementHost.style.top = "0";
+  measurementHost.style.width = `${viewportWidth}px`;
+  measurementHost.style.height = `${viewportHeight}px`;
+  measurementHost.style.overflow = "hidden";
+  measurementHost.style.visibility = "hidden";
+  measurementHost.style.pointerEvents = "none";
+  measurementHost.style.contain = "layout style size";
+  document.body.appendChild(measurementHost);
+
+  const measurementRoot = measurementHost.attachShadow({ mode: "open" });
+  measurementRoot.innerHTML = `
+    ${headMarkup}
+    <style>
+      :host {
+        color-scheme: light only;
+      }
+      #prism-pagination-root {
+        position: relative;
+        width: ${viewportWidth}px;
