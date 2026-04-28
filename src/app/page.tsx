@@ -724,3 +724,106 @@ async function readFileWithProgress(
   return fileBytes.buffer;
 }
 
+function openLibraryDb() {
+  return new Promise<IDBDatabase>((resolve, reject) => {
+    const request = window.indexedDB.open(LIBRARY_DB_NAME, LIBRARY_DB_VERSION);
+
+    request.onupgradeneeded = () => {
+      const database = request.result;
+      if (!database.objectStoreNames.contains(LIBRARY_STORE_NAME)) {
+        database.createObjectStore(LIBRARY_STORE_NAME, { keyPath: "bookId" });
+      }
+    };
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error ?? new Error("Unable to open local library."));
+  });
+}
+
+async function saveUploadedBookRecord(bookData: UploadedBookData) {
+  const database = await openLibraryDb();
+
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(LIBRARY_STORE_NAME, "readwrite");
+    transaction.objectStore(LIBRARY_STORE_NAME).put(bookData);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () =>
+      reject(transaction.error ?? new Error("Unable to save uploaded book."));
+  });
+
+  database.close();
+}
+
+async function loadUploadedBookRecords() {
+  const database = await openLibraryDb();
+
+  const records = await new Promise<UploadedBookData[]>((resolve, reject) => {
+    const transaction = database.transaction(LIBRARY_STORE_NAME, "readonly");
+    const request = transaction.objectStore(LIBRARY_STORE_NAME).getAll();
+    request.onsuccess = () => resolve((request.result as UploadedBookData[]) ?? []);
+    request.onerror = () =>
+      reject(request.error ?? new Error("Unable to load uploaded books."));
+  });
+
+  database.close();
+  return records;
+}
+
+async function loadUploadedBookRecord(bookId: string) {
+  const database = await openLibraryDb();
+
+  const record = await new Promise<UploadedBookData | null>((resolve, reject) => {
+    const transaction = database.transaction(LIBRARY_STORE_NAME, "readonly");
+    const request = transaction.objectStore(LIBRARY_STORE_NAME).get(bookId);
+    request.onsuccess = () => resolve((request.result as UploadedBookData | undefined) ?? null);
+    request.onerror = () =>
+      reject(request.error ?? new Error("Unable to load uploaded book."));
+  });
+
+  database.close();
+  return record;
+}
+
+async function removeUploadedBookRecord(bookId: string) {
+  const database = await openLibraryDb();
+
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(LIBRARY_STORE_NAME, "readwrite");
+    transaction.objectStore(LIBRARY_STORE_NAME).delete(bookId);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () =>
+      reject(transaction.error ?? new Error("Unable to remove uploaded book."));
+  });
+
+  database.close();
+}
+
+async function parseEpubFile(file: File, fileBuffer: ArrayBuffer) {
+  const zip = await JSZip.loadAsync(fileBuffer);
+  const parser = new DOMParser();
+
+  const containerEntry = zip.file("META-INF/container.xml");
+  if (!containerEntry) {
+    throw new Error("This EPUB is missing container metadata.");
+  }
+
+  const containerXml = await containerEntry.async("text");
+  const containerDoc = parser.parseFromString(containerXml, "application/xml");
+  const rootfilePath =
+    containerDoc.querySelector("rootfile")?.getAttribute("full-path") ?? "";
+
+  if (!rootfilePath) {
+    throw new Error("Unable to find the EPUB package file.");
+  }
+
+  const packageEntry = zip.file(rootfilePath);
+  if (!packageEntry) {
+    throw new Error("Unable to read the EPUB package file.");
+  }
+
+  const packageXml = await packageEntry.async("text");
+  const packageDoc = parser.parseFromString(packageXml, "application/xml");
+  const metadata = packageDoc.querySelector("metadata");
+
+  const title =
+    metadata?.querySelector("title, dc\\:title")?.textContent?.trim() ||
