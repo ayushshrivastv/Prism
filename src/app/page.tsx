@@ -1760,3 +1760,106 @@ async function extractFastPreviewChunkFromEpub(
     return blobUrl;
   };
 
+  const ensureAssetBlobUrl = async (
+    assetPath: string,
+    basePath: string,
+    explicitMimeType?: string,
+  ) => {
+    if (!assetPath || isExternalAssetTarget(assetPath)) return assetPath;
+
+    const fragment = assetPath.includes("#") ? `#${assetPath.split("#").slice(1).join("#")}` : "";
+    const sanitizedAssetPath = sanitizeAssetTarget(assetPath);
+    const resolvedPath = resolveEpubPath(basePath, sanitizedAssetPath);
+
+    if (!assetBlobCache.has(resolvedPath)) {
+      assetBlobCache.set(
+        resolvedPath,
+        (async () => {
+          const assetFile = zip.file(resolvedPath);
+          if (!assetFile) return null;
+
+          const assetBuffer = await assetFile.async("arraybuffer");
+          const mimeType =
+            explicitMimeType || manifestByResolvedPath[resolvedPath] || getMimeType(resolvedPath);
+          return createBlobUrl(assetBuffer, mimeType);
+        })(),
+      );
+    }
+
+    const blobUrl = await assetBlobCache.get(resolvedPath);
+    return blobUrl ? `${blobUrl}${fragment}` : null;
+  };
+
+  const rewriteCssAssetUrls = async (cssText: string, cssPath: string) => {
+    const cssBasePath = getBasePath(cssPath);
+    const matches = Array.from(cssText.matchAll(/url\(([^)]+)\)/gi));
+    const replacements = await Promise.all(
+      matches.map(async (match) => {
+        const rawTarget = match[1]?.trim().replace(/^['"]|['"]$/g, "") ?? "";
+        const nextTarget = await ensureAssetBlobUrl(rawTarget, cssBasePath);
+        return {
+          original: match[0],
+          replacement:
+            nextTarget && nextTarget !== rawTarget ? `url("${nextTarget}")` : match[0],
+        };
+      }),
+    );
+
+    return replacements.reduce(
+      (nextCssText, replacement) =>
+        nextCssText.replace(replacement.original, replacement.replacement),
+      cssText,
+    );
+  };
+
+  const ensureStylesheetBlobUrl = async (stylesheetPath: string, basePath: string) => {
+    if (!stylesheetPath || isExternalAssetTarget(stylesheetPath)) return stylesheetPath;
+
+    const sanitizedStylesheetPath = sanitizeAssetTarget(stylesheetPath);
+    const resolvedPath = resolveEpubPath(basePath, sanitizedStylesheetPath);
+
+    if (!stylesheetBlobCache.has(resolvedPath)) {
+      stylesheetBlobCache.set(
+        resolvedPath,
+        (async () => {
+          const stylesheetFile = zip.file(resolvedPath);
+          if (!stylesheetFile) return null;
+
+          const stylesheetText = await stylesheetFile.async("text");
+          const rewrittenStylesheetText = await rewriteCssAssetUrls(
+            stylesheetText,
+            resolvedPath,
+          );
+          return createBlobUrl(rewrittenStylesheetText, "text/css");
+        })(),
+      );
+    }
+
+    return stylesheetBlobCache.get(resolvedPath) ?? null;
+  };
+
+  const collectedBlocks: string[] = [];
+
+  for (const spineItemId of spineItemIds) {
+    const manifestItem = manifestById[spineItemId];
+    if (!manifestItem?.href) continue;
+
+    const spineDocumentPath = resolveEpubPath(packageBasePath, manifestItem.href);
+    const spineDocumentFile = zip.file(spineDocumentPath);
+    if (!spineDocumentFile) continue;
+
+    const spineDocumentMarkup = await spineDocumentFile.async("text");
+    const chapterDoc = parser.parseFromString(spineDocumentMarkup, "text/html");
+    const chapterBasePath = getBasePath(spineDocumentPath);
+    const chapterHead = chapterDoc.head;
+    const chapterBody = chapterDoc.body;
+
+    if (!chapterBody) continue;
+
+    const stylesheetLinks = Array.from(
+      chapterHead?.querySelectorAll('link[rel~="stylesheet"][href]') ?? [],
+    );
+    await Promise.all(
+      stylesheetLinks.map(async (link) => {
+        const stylesheetTarget = link.getAttribute("href") ?? "";
+        const stylesheetBlobUrl = await ensureStylesheetBlobUrl(
