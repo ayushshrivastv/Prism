@@ -1449,3 +1449,106 @@ async function paginatePreviewBlocks(
 
     const splitOversizedTextBlock = (blockMarkup: string) => {
       const splittableTextBlock = createSplittableTextBlock(blockMarkup);
+      if (!splittableTextBlock) {
+        return null;
+      }
+
+      const { words, serializeSlice } = splittableTextBlock;
+
+      const splitPages: string[] = [];
+      let startIndex = 0;
+
+      while (startIndex < words.length) {
+        let low = startIndex + 1;
+        let high = words.length;
+        let bestFit = startIndex + 1;
+
+        while (low <= high) {
+          const middle = Math.floor((low + high) / 2);
+          setMeasurePage([serializeSlice(startIndex, middle)]);
+
+          if (pageOverflows()) {
+            high = middle - 1;
+          } else {
+            bestFit = middle;
+            low = middle + 1;
+          }
+        }
+
+        splitPages.push(serializeSlice(startIndex, bestFit));
+        startIndex = bestFit;
+      }
+
+      return splitPages;
+    };
+
+    const splitTextBlockAcrossCurrentPage = (
+      blockMarkup: string,
+      leadingBlocks: string[],
+    ) => {
+      const splittableTextBlock = createSplittableTextBlock(blockMarkup);
+      if (!splittableTextBlock) {
+        return null;
+      }
+
+      const { words, serializeSlice } = splittableTextBlock;
+      let low = 1;
+      let high = words.length - 1;
+      let bestFit = 0;
+
+      while (low <= high) {
+        const middle = Math.floor((low + high) / 2);
+        setMeasurePage([...leadingBlocks, serializeSlice(0, middle)]);
+
+        if (pageOverflows()) {
+          high = middle - 1;
+        } else {
+          bestFit = middle;
+          low = middle + 1;
+        }
+      }
+
+      if (bestFit <= 0 || bestFit >= words.length) {
+        return null;
+      }
+
+      return {
+        fittingMarkup: serializeSlice(0, bestFit),
+        trailingMarkup: serializeSlice(bestFit, words.length),
+      };
+    };
+
+    const createMediaPageFittedBlock = (blockMarkup: string) => {
+      const template = measurementDocument.createElement("template");
+      template.innerHTML = blockMarkup.trim();
+      const blockElement = template.content.firstElementChild;
+
+      if (!(blockElement instanceof HTMLElement) || template.content.childElementCount !== 1) {
+        return null;
+      }
+
+      const mediaSelector = "img, svg, video, canvas";
+      if (blockElement.matches(mediaSelector)) {
+        const wrapper = measurementDocument.createElement("figure");
+        wrapper.className = "prism-fast-page-media";
+        wrapper.appendChild(blockElement.cloneNode(true));
+        return wrapper.outerHTML;
+      }
+
+      if (!blockElement.querySelector(mediaSelector)) {
+        return null;
+      }
+
+      const clone = blockElement.cloneNode(true) as HTMLElement;
+      clone.classList.add("prism-fast-page-media");
+      return clone.outerHTML;
+    };
+
+    const commitPage = () => {
+      if (currentPageBlocks.length === 0) return false;
+      paginatedPages.push(currentPageBlocks.join("\n"));
+      currentPageBlocks = [];
+      setMeasurePage([]);
+      return paginatedPages.length >= pageLimit;
+    };
+
