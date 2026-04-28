@@ -827,3 +827,107 @@ async function parseEpubFile(file: File, fileBuffer: ArrayBuffer) {
 
   const title =
     metadata?.querySelector("title, dc\\:title")?.textContent?.trim() ||
+    file.name.replace(/\.epub$/i, "");
+  const author =
+    metadata?.querySelector("creator, dc\\:creator")?.textContent?.trim() ||
+    "Unknown author";
+
+  const manifestItems = Array.from(packageDoc.querySelectorAll("manifest > item"));
+  const coverMetaId =
+    metadata?.querySelector('meta[name="cover"]')?.getAttribute("content") ?? "";
+
+  const coverItem =
+    manifestItems.find((item) => item.getAttribute("id") === coverMetaId) ||
+    manifestItems.find((item) => item.getAttribute("properties")?.includes("cover-image")) ||
+    manifestItems.find((item) => (item.getAttribute("media-type") || "").startsWith("image/"));
+
+  let coverUrl: string | null = null;
+
+  if (coverItem) {
+    const href = coverItem.getAttribute("href");
+    if (href) {
+      const coverPath = resolveEpubPath(getBasePath(rootfilePath), href);
+      const coverFile = zip.file(coverPath);
+
+      if (coverFile) {
+        const coverBuffer = await coverFile.async("arraybuffer");
+        coverUrl = arrayBufferToDataUrl(coverBuffer, getMimeType(coverPath));
+      }
+    }
+  }
+
+  const chapterIds = Array.from(packageDoc.querySelectorAll("spine > itemref"))
+    .map((item) => item.getAttribute("idref") ?? "")
+    .filter(Boolean);
+
+  return {
+    title,
+    author,
+    coverUrl,
+    rawFile: fileBuffer,
+    fileName: file.name,
+    fileSize: file.size,
+    uploadedAt: new Date().toISOString(),
+    spine: chapterIds,
+  };
+}
+
+function createFastPreviewDocument(spreadsHtml: string[], headMarkup: string) {
+  const fastPreviewStyles = `
+    :root {
+      color-scheme: light only;
+      --prism-stage: #ffffff;
+      --prism-paper: #ffffff;
+      --prism-ink: #1c1b19;
+      --prism-muted: #7d7d80;
+      --prism-gutter: rgba(28, 27, 25, 0.06);
+    }
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+    html, body {
+      margin: 0;
+      width: 100%;
+      max-width: 100%;
+      height: 100%;
+      background: var(--prism-stage);
+      overflow-x: hidden;
+      overflow-y: auto;
+    }
+    body {
+      overflow-x: hidden;
+      overflow-y: auto;
+      background: var(--prism-stage);
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+    }
+    :where(body) {
+      color: var(--prism-ink);
+      font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+      font-size: clamp(16px, 1.02vw, 18px);
+      line-height: 1.4;
+      letter-spacing: 0;
+      hyphens: auto;
+      -webkit-hyphens: auto;
+    }
+    #prism-preview-track {
+      display: flex;
+      width: 100%;
+      height: 100%;
+      padding: 0;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scroll-snap-type: x mandatory;
+      scroll-behavior: smooth;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+      gap: 0;
+      background: var(--prism-stage);
+    }
+    #prism-preview-track::-webkit-scrollbar {
+      display: none;
+    }
+    .prism-fast-spread {
+      position: relative;
+      width: 100%;
+      min-width: 100%;
