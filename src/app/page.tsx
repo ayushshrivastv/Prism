@@ -1242,3 +1242,106 @@ async function paginatePreviewBlocks(
       #prism-pagination-root {
         position: relative;
         width: ${viewportWidth}px;
+        height: ${viewportHeight}px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: ${spreadGap}px;
+        box-sizing: border-box;
+        padding: ${spreadPaddingTop}px ${spreadPaddingX}px ${spreadPaddingBottom}px;
+        align-items: stretch;
+        background: #ffffff;
+        overflow: hidden;
+      }
+      #prism-pagination-root::before {
+        content: "";
+        position: absolute;
+        top: ${gutterTop}px;
+        bottom: ${gutterBottom}px;
+        left: 50%;
+        width: 1px;
+        transform: translateX(-0.5px);
+        background: linear-gradient(180deg, transparent 0%, rgba(28, 27, 25, 0.06) 8%, rgba(28, 27, 25, 0.06) 92%, transparent 100%);
+        pointer-events: none;
+        display: ${compactLayout ? "none" : "block"};
+      }
+      .prism-fast-page {
+        width: 100%;
+        height: 100%;
+        min-width: 0;
+        max-width: 100%;
+        overflow: hidden;
+        overflow-x: hidden;
+        display: flex;
+        flex-direction: column;
+        padding: ${pagePaddingTop}px ${pagePaddingX}px ${pagePaddingBottom}px;
+        box-sizing: border-box;
+        border: none;
+        background: transparent;
+      }
+      .prism-fast-page > * {
+        flex-shrink: 0;
+        max-width: 100%;
+        overflow-x: hidden;
+        box-sizing: border-box;
+      }
+      :where(.prism-fast-page) {
+        font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+        font-size: ${pageFontSize}px;
+        line-height: 1.4;
+        letter-spacing: 0;
+        color: #1c1b19;
+        hyphens: auto;
+        -webkit-hyphens: auto;
+      }
+      :where(.prism-fast-page > :last-child) {
+        margin-bottom: 0 !important;
+      }
+      :where(.prism-fast-page p) {
+        margin: 0 0 0.72em;
+        orphans: 2;
+        widows: 2;
+        text-wrap: pretty;
+      }
+      :where(.prism-fast-page figure) {
+        margin: 0.2em 0 1.1em;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      :where(.prism-fast-page .prism-fast-page-media) {
+        display: grid;
+        grid-template-rows: minmax(0, 1fr) auto;
+        align-items: center;
+        max-height: 100%;
+        height: 100%;
+        min-height: 0;
+        overflow: hidden;
+        margin: 0.1em 0 0.8em;
+      }
+      :where(.prism-fast-page figcaption) {
+        margin-top: 0.8em;
+        font-size: 0.88em;
+        line-height: 1.42;
+        text-align: center;
+        color: #7d7d80;
+      }
+      :where(.prism-fast-page .prism-fast-page-media > img, .prism-fast-page .prism-fast-page-media > svg, .prism-fast-page .prism-fast-page-media > video, .prism-fast-page .prism-fast-page-media > canvas) {
+        width: 100%;
+        max-height: 100%;
+        min-height: 0;
+      }
+      :where(.prism-fast-page .prism-fast-page-media img, .prism-fast-page .prism-fast-page-media svg, .prism-fast-page .prism-fast-page-media video, .prism-fast-page .prism-fast-page-media canvas) {
+        max-height: min(100%, ${Math.max(180, pageImageMaxHeight - 56)}px);
+      }
+      :where(.prism-fast-page .prism-fast-page-media figcaption) {
+        margin-top: 0.5em;
+      }
+      :where(.prism-fast-page img, .prism-fast-page svg, .prism-fast-page video, .prism-fast-page canvas) {
+        max-width: 100%;
+        max-height: ${pageImageMaxHeight}px;
+        height: auto;
+        object-fit: contain;
+        display: block;
+        margin: 0 auto;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
