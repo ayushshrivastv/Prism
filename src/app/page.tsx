@@ -2070,3 +2070,107 @@ export default function HomePage() {
       const storedSessions = window.localStorage.getItem(READING_SESSIONS_KEY);
       if (!storedSessions) return [];
 
+      const parsedSessions = JSON.parse(storedSessions) as ReadingSession[];
+      return Array.isArray(parsedSessions) ? parsedSessions : [];
+    } catch (error) {
+      console.error("Unable to parse stored reading sessions.", error);
+      return [];
+    }
+  });
+  const [openMenuBookId, setOpenMenuBookId] = useState<string | null>(null);
+  const [storePromptBookId, setStorePromptBookId] = useState<string | null>(null);
+  const [storeActionLoading, setStoreActionLoading] = useState<string | null>(null);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [readerBookPreview, setReaderBookPreview] = useState<{
+    title: string;
+    coverUrl: string | null;
+  } | null>(null);
+  const [readerBookData, setReaderBookData] = useState<UploadedBookData | null>(null);
+  const [readerStatus, setReaderStatus] = useState<"idle" | "loading" | "ready" | "error">(
+    "idle",
+  );
+  const [readerElapsedMs, setReaderElapsedMs] = useState(0);
+  const [readerErrorMessage, setReaderErrorMessage] = useState<string | null>(null);
+  const [readerAtStart, setReaderAtStart] = useState(true);
+  const [readerAtEnd, setReaderAtEnd] = useState(false);
+  const [readerFastPreviewUrl, setReaderFastPreviewUrl] = useState<string | null>(null);
+  const [readerEngineReady, setReaderEngineReady] = useState(false);
+  const [readerPreviewReady, setReaderPreviewReady] = useState(false);
+  const [readerPreviewSpreadCount, setReaderPreviewSpreadCount] = useState(0);
+  const [, setReaderPreviewSpreadIndex] = useState(0);
+  const epubInputRef = useRef<HTMLInputElement | null>(null);
+  const comingSoonTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const uploadedBookDataRef = useRef<Record<string, UploadedBookData>>({});
+  const storeBookRecordPromisesRef = useRef<Record<string, Promise<UploadedBookData> | undefined>>(
+    {},
+  );
+  const readerActiveBookIdRef = useRef<string | null>(null);
+  const readerSessionStartedAtRef = useRef<number | null>(null);
+  const readerSessionStartPageRef = useRef(0);
+  const readerSessionCurrentPageRef = useRef(0);
+  const readerSessionTotalPagesRef = useRef(0);
+  const readerSessionProgressRef = useRef(0);
+  const profileMenuRef = useRef<HTMLDivElement | null>(null);
+  const readerViewportRef = useRef<HTMLDivElement | null>(null);
+  const readerBookInstanceRef = useRef<EpubBookInstance | null>(null);
+  const readerRenditionRef = useRef<EpubRenditionInstance | null>(null);
+  const readerFastPreviewIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const readerTimerFrameRef = useRef<number | null>(null);
+  const readerMountTokenRef = useRef(0);
+  const readerPreviewMountTokenRef = useRef(0);
+  const readerPreviewAppendTokenRef = useRef(0);
+  const readerPreviewLoadedPagesRef = useRef(0);
+  const readerWheelLockRef = useRef(0);
+  const readerPreviewCleanupUrlsRef = useRef<string[]>([]);
+  const readerPreviewSpreadIndexRef = useRef(0);
+  const activeProgress = buildReadingProgress(selectedRange, books, realReadingSessions);
+  const uploadedBooks = books.filter((book) => book.source === "upload");
+  const addedBookIds = new Set(uploadedBooks.map((book) => book.id));
+  const shouldRenderPreviewFrame = Boolean(readerFastPreviewUrl && !readerEngineReady);
+  const isPreviewVisible = Boolean(
+    shouldRenderPreviewFrame && readerPreviewReady,
+  );
+  const shouldSkipAuth = SHOULD_BYPASS_AUTH_IN_DEV || skipAuthOnLocalhost;
+  const viewerName =
+    authUser?.displayName?.trim() ||
+    authUser?.email?.split("@")[0] ||
+    cachedUser.name;
+  const viewerBadge =
+    viewerName
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((segment) => segment[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || cachedUser.badge;
+  const firstName =
+    viewerName
+      .split(/[.\s_-]+/)
+      .filter(Boolean)[0]
+      ?.replace(/^\w/, (char) => char.toUpperCase()) ?? "Reader";
+  const progressPercent = Math.min(
+    100,
+    Math.round((activeProgress.minutes / activeProgress.goal) * 100),
+  );
+  const timelineChart = buildTimelineChart(activeProgress.bars);
+
+  const showComingSoon = (label: string) => {
+    setComingSoonLabel(label);
+
+    if (comingSoonTimerRef.current) {
+      clearTimeout(comingSoonTimerRef.current);
+    }
+
+    comingSoonTimerRef.current = setTimeout(() => {
+      setComingSoonLabel(null);
+    }, 1600);
+  };
+
+  const openEpubPicker = () => {
+    epubInputRef.current?.click();
+  };
+
+  const resetReaderSessionTracking = useCallback(() => {
+    readerActiveBookIdRef.current = null;
+    readerSessionStartedAtRef.current = null;
+    readerSessionStartPageRef.current = 0;
