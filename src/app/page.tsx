@@ -1345,3 +1345,107 @@ async function paginatePreviewBlocks(
         break-inside: avoid;
         page-break-inside: avoid;
       }
+      :where(.prism-fast-page blockquote, .prism-fast-page ul, .prism-fast-page ol, .prism-fast-page pre, .prism-fast-page table) {
+        margin: 0.2em 0 1em;
+        max-width: 100%;
+      }
+      :where(.prism-fast-page blockquote) {
+        padding-left: 1em;
+        border-left: 1px solid rgba(28, 27, 25, 0.16);
+        font-style: italic;
+      }
+      :where(.prism-fast-page ul, .prism-fast-page ol) {
+        padding-left: 1.1em;
+      }
+      :where(.prism-fast-page pre, .prism-fast-page code) {
+        white-space: pre-wrap !important;
+        word-break: break-word !important;
+      }
+      :where(.prism-fast-page table, .prism-fast-page pre) {
+        width: 100%;
+        overflow-x: hidden;
+      }
+      :where(.prism-fast-page h1, .prism-fast-page h2, .prism-fast-page h3, .prism-fast-page h4, .prism-fast-page h5, .prism-fast-page h6) {
+        margin-top: 0;
+        margin-bottom: 0.7em;
+        line-height: 1.14;
+        letter-spacing: -0.01em;
+        break-after: avoid;
+        text-wrap: balance;
+      }
+      :where(.prism-fast-page h1) {
+        font-size: 2.4em;
+      }
+      :where(.prism-fast-page h2) {
+        font-size: 1.9em;
+      }
+      :where(.prism-fast-page h3) {
+        font-size: 1.4em;
+      }
+    </style>
+    <section id="prism-pagination-root">
+      <article id="prism-pagination-measure-page" class="prism-fast-page"></article>
+      <article class="prism-fast-page" aria-hidden="true"></article>
+    </section>
+  `;
+
+  try {
+    await waitForPreviewStylesheets(measurementRoot);
+
+    const measurePage = measurementRoot.getElementById("prism-pagination-measure-page");
+    if (!(measurePage instanceof HTMLElement)) {
+      return fallbackPaginatePreviewBlocks(collectedBlocks, pageLimit);
+    }
+
+    const measurementDocument = measurementHost.ownerDocument;
+    const paginatedPages: string[] = [];
+    let currentPageBlocks: string[] = [];
+
+    const setMeasurePage = (blocks: string[]) => {
+      measurePage.innerHTML = blocks.join("\n");
+    };
+
+    const pageOverflows = () =>
+      measurePage.scrollHeight > measurePage.clientHeight + 1 ||
+      measurePage.scrollWidth > measurePage.clientWidth + 1;
+
+    const createSplittableTextBlock = (blockMarkup: string) => {
+      const template = measurementDocument.createElement("template");
+      template.innerHTML = blockMarkup.trim();
+      const blockElement = template.content.firstElementChild;
+
+      if (!(blockElement instanceof Element) || template.content.childElementCount !== 1) {
+        return null;
+      }
+
+      if (
+        blockElement.matches("figure, img, svg, video, canvas, ul, ol, table, pre, hr") ||
+        blockElement.querySelector("img, svg, video, canvas, table, pre, figure")
+      ) {
+        return null;
+      }
+
+      const normalizedText = blockElement.textContent?.replace(/\s+/g, " ").trim() ?? "";
+      if (normalizedText.length < 180) {
+        return null;
+      }
+
+      const words = normalizedText.split(" ").filter(Boolean);
+      if (words.length < 32) {
+        return null;
+      }
+
+      const serializeSlice = (startIndex: number, endIndex: number) => {
+        const clone = blockElement.cloneNode(false) as HTMLElement;
+        clone.textContent = words.slice(startIndex, endIndex).join(" ");
+        return clone.outerHTML;
+      };
+
+      return {
+        words,
+        serializeSlice,
+      };
+    };
+
+    const splitOversizedTextBlock = (blockMarkup: string) => {
+      const splittableTextBlock = createSplittableTextBlock(blockMarkup);
