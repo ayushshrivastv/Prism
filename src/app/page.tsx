@@ -1656,3 +1656,107 @@ function collectReadablePreviewBlocks(root: Element) {
   const readableBlocks: Element[] = [];
 
   for (const child of directChildren) {
+    if (child.matches(leafSelector)) {
+      readableBlocks.push(child);
+      continue;
+    }
+
+    if (containerTags.has(child.tagName)) {
+      const nestedBlocks = collectReadablePreviewBlocks(child);
+      if (nestedBlocks.length > 0) {
+        readableBlocks.push(...nestedBlocks);
+        continue;
+      }
+    }
+
+    const textContent = child.textContent?.replace(/\s+/g, " ").trim() ?? "";
+    if (textContent) {
+      readableBlocks.push(child);
+    }
+  }
+
+  return readableBlocks;
+}
+
+async function extractFastPreviewChunkFromEpub(
+  fileBuffer: ArrayBuffer,
+  {
+    skipPages = 0,
+    maxPages = 20,
+  }: {
+    skipPages?: number;
+    maxPages?: number;
+  } = {},
+): Promise<ReaderFastPreviewChunk> {
+  const zip = await JSZip.loadAsync(fileBuffer);
+  const parser = new DOMParser();
+
+  const containerEntry = zip.file("META-INF/container.xml");
+  if (!containerEntry) {
+    throw new Error("This EPUB is missing container metadata.");
+  }
+
+  const containerXml = await containerEntry.async("text");
+  const containerDoc = parser.parseFromString(containerXml, "application/xml");
+  const rootfilePath =
+    containerDoc.querySelector("rootfile")?.getAttribute("full-path") ?? "";
+
+  if (!rootfilePath) {
+    throw new Error("Unable to find the EPUB package file.");
+  }
+
+  const packageEntry = zip.file(rootfilePath);
+  if (!packageEntry) {
+    throw new Error("Unable to read the EPUB package file.");
+  }
+
+  const packageXml = await packageEntry.async("text");
+  const packageDoc = parser.parseFromString(packageXml, "application/xml");
+  const manifestItems = Array.from(packageDoc.querySelectorAll("manifest > item"));
+  const manifestById = Object.fromEntries(
+    manifestItems.map((item) => [
+      item.getAttribute("id") ?? "",
+      {
+        href: item.getAttribute("href") ?? "",
+        mediaType: item.getAttribute("media-type") ?? "",
+      },
+    ]),
+  );
+  const manifestByResolvedPath = Object.fromEntries(
+    manifestItems
+      .map((item) => {
+        const href = item.getAttribute("href") ?? "";
+        if (!href) return null;
+
+        return [
+          resolveEpubPath(getBasePath(rootfilePath), href),
+          item.getAttribute("media-type") ?? "",
+        ] as const;
+      })
+      .filter(
+        (entry): entry is readonly [string, string] => Array.isArray(entry) && entry[0].length > 0,
+      ),
+  );
+
+  const spineItemIds = Array.from(packageDoc.querySelectorAll("spine > itemref"))
+    .map((item) => item.getAttribute("idref") ?? "")
+    .filter(Boolean);
+
+  if (spineItemIds.length === 0) {
+    throw new Error("This EPUB does not contain readable spine items.");
+  }
+
+  const cleanupUrls: string[] = [];
+  const stylesheetBlobCache = new Map<string, Promise<string | null>>();
+  const assetBlobCache = new Map<string, Promise<string | null>>();
+  const resolvedHeadEntries = new Map<string, string>();
+  const packageBasePath = getBasePath(rootfilePath);
+
+  const createBlobUrl = (buffer: ArrayBuffer | string, mimeType: string) => {
+    const blobUrl = URL.createObjectURL(
+      new Blob([buffer], { type: mimeType }),
+    );
+    cleanupUrls.push(blobUrl);
+    return blobUrl;
+  };
+
