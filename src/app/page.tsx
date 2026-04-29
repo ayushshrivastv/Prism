@@ -3314,3 +3314,106 @@ export default function HomePage() {
     };
 
     window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [readerStatus, closeReaderOverlay, goToNextReaderSpread, goToPreviousReaderSpread]);
+
+  if (!shouldSkipAuth && authStatus !== "authenticated") {
+    const isCheckingSession = authStatus === "loading";
+
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-white px-6">
+        <div className="flex w-full max-w-[360px] flex-col items-center text-center">
+          <button
+            type="button"
+            onClick={() => void handleGoogleSignIn()}
+            disabled={isCheckingSession || isSigningIn}
+            className="flex min-h-11 w-full items-center justify-center gap-3 rounded-[1rem] border border-[#dbdbde] bg-white px-4 py-3 text-[0.92rem] font-medium tracking-[-0.02em] text-[#171717] transition-colors hover:bg-[#f7f7f7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/15 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isCheckingSession || isSigningIn ? (
+              <LoaderCircle className="h-5 w-5 animate-spin" strokeWidth={1.9} />
+            ) : (
+              <GoogleIcon />
+            )}
+            <span>
+              {isCheckingSession
+                ? "Loading..."
+                : isSigningIn
+                  ? "Signing in..."
+                  : "Sign in with Google"}
+            </span>
+          </button>
+
+          {authActionError ? (
+            <p className="mt-4 text-[0.82rem] font-medium tracking-[-0.01em] text-[#b55151]">
+              {authActionError}
+            </p>
+          ) : null}
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main className="h-screen overflow-hidden bg-[#f5f5f3] text-[#151515]">
+      <div className="grid h-screen w-full grid-cols-[192px_minmax(0,1fr)]">
+        <aside className="flex h-screen flex-col overflow-hidden bg-[#f3f3f1]">
+          <div className="px-5 pb-6 pt-5">
+            <h1 className="text-[1.82rem] font-semibold tracking-[-0.075em] text-[#111111]">
+              Prism
+            </h1>
+          </div>
+
+          <div className="visible-scrollbar min-h-0 flex-1 overflow-y-auto px-2.5">
+              <nav aria-label="Sidebar" className="space-y-2">
+                <div>
+                  <SidebarButton
+                    label="Home"
+                    active={currentPage === "home"}
+                    icon={Home}
+                    onClick={() => setCurrentPage("home")}
+                  />
+                </div>
+
+                <div>
+                  <SidebarButton
+                    label="Books Store"
+                    active={currentPage === "store"}
+                    icon={Store}
+                    onClick={() => setCurrentPage("store")}
+                  />
+                </div>
+
+                <div className="space-y-0.5">
+                  <p className="px-4 pb-0.5 text-[0.76rem] font-medium text-[#999999]">
+                    Library
+                  </p>
+                  {libraryItems.map(({ label, icon }) => (
+                    <SidebarButton
+                      key={label}
+                      label={label}
+                      icon={icon}
+                      active={
+                        currentPage === "read" && label === "Read"
+                      }
+                      onClick={
+                        label === "Read"
+                          ? () => setCurrentPage("read")
+                          : () => showComingSoon(label)
+                      }
+                      badge={comingSoonLabel === label ? "Coming soon" : null}
+                    />
+                  ))}
+                </div>
+
+                <div className="space-y-0.5">
+                  <p className="px-4 pb-0.5 text-[0.76rem] font-medium text-[#999999]">
+                    My Collections
+                  </p>
+                  {uploadedBooks.length > 0 ? (
+                    <div className="space-y-2">
+                      {uploadedBooks.map((book) => (
+                          <div
+                            key={book.id}
+                            className={`rounded-[1rem] border px-4 py-3 transition-colors ${
+                              book.uploadStatus === "ready"
+                                ? "cursor-pointer border-[#dfdfdb] bg-white/60 hover:bg-white"
