@@ -2692,3 +2692,107 @@ export default function HomePage() {
         author: "Preparing upload...",
         progress: 0,
         totalPages: 0,
+        currentPage: 0,
+        status: "reading",
+        source: "upload",
+        uploadStatus: "uploading",
+        uploadProgress: 0,
+        uploadLoadedBytes: 0,
+        uploadTotalBytes: file.size,
+        errorMessage: null,
+      },
+      ...currentBooks,
+    ]);
+
+    try {
+      const fileBuffer = await readFileWithProgress(file, (loadedBytes, totalBytes) => {
+        const nextProgress = Math.min(98, Math.round((loadedBytes / totalBytes) * 100));
+
+        setBooks((currentBooks) =>
+          currentBooks.map((book) =>
+            book.id === bookId
+              ? {
+                  ...book,
+                  uploadStatus: "uploading",
+                  uploadProgress: nextProgress,
+                  uploadLoadedBytes: loadedBytes,
+                  uploadTotalBytes: totalBytes,
+                }
+              : book,
+          ),
+        );
+      });
+
+      const parsedBook = await parseEpubFile(file, fileBuffer);
+
+      const uploadedBookRecord: UploadedBookData = {
+        bookId,
+        title: parsedBook.title,
+        author: parsedBook.author,
+        coverUrl: parsedBook.coverUrl,
+        fileName: parsedBook.fileName,
+        fileSize: parsedBook.fileSize,
+        uploadedAt: parsedBook.uploadedAt,
+        rawFile: parsedBook.rawFile,
+        spine: parsedBook.spine,
+      };
+      uploadedBookDataRef.current[bookId] = uploadedBookRecord;
+      await saveUploadedBookRecord(uploadedBookRecord);
+
+      setBooks((currentBooks) =>
+        currentBooks.map((book) =>
+          book.id === bookId
+            ? {
+                ...book,
+                title: parsedBook.title,
+                author: parsedBook.author,
+                coverUrl: parsedBook.coverUrl,
+                uploadStatus: "ready",
+                uploadProgress: 100,
+                uploadLoadedBytes: file.size,
+                uploadTotalBytes: file.size,
+                errorMessage: null,
+              }
+            : book,
+        ),
+      );
+    } catch (error) {
+      console.error(error);
+
+      setBooks((currentBooks) =>
+        currentBooks.map((book) =>
+          book.id === bookId
+            ? {
+                ...book,
+                uploadStatus: "error",
+                errorMessage: "Upload failed",
+              }
+            : book,
+        ),
+      );
+    } finally {
+      event.target.value = "";
+    }
+  };
+
+  useEffect(() => {
+    void loadFirebaseAnalytics();
+
+    const unsubscribe = onAuthStateChanged(firebaseAuth, (nextUser) => {
+      setAuthUser(nextUser);
+      setAuthStatus(nextUser ? "authenticated" : "unauthenticated");
+      setIsSigningIn(false);
+      setIsSigningOut(false);
+      setAuthActionError(null);
+      setIsProfileMenuOpen(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const storedSummaries = window.localStorage.getItem(UPLOADED_BOOK_SUMMARIES_KEY);
+    if (storedSummaries) {
+      try {
+        const parsedSummaries = JSON.parse(storedSummaries) as Book[];
+        window.requestAnimationFrame(() => {
