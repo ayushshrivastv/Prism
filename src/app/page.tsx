@@ -2588,3 +2588,107 @@ export default function HomePage() {
         uploadedBookDataRef.current[book.id] ??
         (await loadUploadedBookRecord(book.id)) ??
         (storeBooks.some((storeBook) => storeBook.id === book.id)
+          ? await ensureStoreBookRecord(book.id)
+          : null);
+
+      if (!uploadedRecord) {
+        throw new Error("This book is no longer available in local storage.");
+      }
+
+      uploadedBookDataRef.current[book.id] = uploadedRecord;
+      setReaderBookPreview({
+        title: uploadedRecord.title,
+        coverUrl: uploadedRecord.coverUrl,
+      });
+      setReaderBookData(uploadedRecord);
+    } catch (error) {
+      resetReaderSessionTracking();
+      if (readerTimerFrameRef.current) {
+        window.cancelAnimationFrame(readerTimerFrameRef.current);
+        readerTimerFrameRef.current = null;
+      }
+
+      setReaderStatus("error");
+      setReaderErrorMessage(
+        error instanceof Error ? error.message : "Unable to open this book right now.",
+      );
+    }
+  };
+
+  const removeUploadedBook = async (bookId: string) => {
+    setBooks((currentBooks) => currentBooks.filter((book) => book.id !== bookId));
+    delete uploadedBookDataRef.current[bookId];
+    setOpenMenuBookId(null);
+
+    try {
+      await removeUploadedBookRecord(bookId);
+    } catch (error) {
+      console.error("Unable to remove uploaded book from local storage.", error);
+    }
+  };
+
+  const addStoreBookToReadingList = async (storeBookId: string) => {
+    if (storeActionLoading) return;
+
+    const selectedStoreBook = storeBooks.find((book) => book.id === storeBookId);
+    if (!selectedStoreBook) return;
+
+    const existingBook = books.find((book) => book.id === selectedStoreBook.id);
+    if (existingBook) {
+      setStorePromptBookId(null);
+      setCurrentPage("read");
+      void ensureStoreBookRecord(selectedStoreBook.id).catch((error) => {
+        console.error("Unable to warm bundled bookstore book.", error);
+      });
+      return;
+    }
+
+    setStoreActionLoading(storeBookId);
+
+    try {
+      setBooks((currentBooks) =>
+        mergeBooks(currentBooks, [
+          {
+            id: selectedStoreBook.id,
+            title: selectedStoreBook.title,
+            author: selectedStoreBook.author,
+            progress: 0,
+            totalPages: 0,
+            currentPage: 0,
+            status: "reading",
+            coverUrl: selectedStoreBook.coverUrl,
+            source: "upload",
+            uploadStatus: "ready",
+            uploadProgress: 100,
+            uploadLoadedBytes: 0,
+            uploadTotalBytes: 0,
+            errorMessage: null,
+          },
+        ]),
+      );
+
+      setStorePromptBookId(null);
+      setCurrentPage("read");
+      void ensureStoreBookRecord(selectedStoreBook.id).catch((error) => {
+        console.error("Unable to save bundled bookstore book.", error);
+      });
+    } catch (error) {
+      console.error("Unable to add bundled bookstore book.", error);
+    } finally {
+      setStoreActionLoading(null);
+    }
+  };
+
+  const handleEpubSelect = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const bookId = createUploadedBookId(file.name);
+
+    setBooks((currentBooks) => [
+      {
+        id: bookId,
+        title: file.name.replace(/\.epub$/i, ""),
+        author: "Preparing upload...",
+        progress: 0,
+        totalPages: 0,
