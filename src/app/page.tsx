@@ -2899,3 +2899,107 @@ export default function HomePage() {
     };
   }, [isProfileMenuOpen]);
 
+  useEffect(() => {
+    if (readerStatus !== "loading" || !readerBookData) return;
+
+    const mountToken = readerPreviewMountTokenRef.current + 1;
+    readerPreviewMountTokenRef.current = mountToken;
+
+    void (async () => {
+      try {
+        const preview = await buildFastPreviewFromEpub(readerBookData.rawFile);
+        if (readerPreviewMountTokenRef.current !== mountToken) {
+          preview.cleanupUrls.forEach((url) => URL.revokeObjectURL(url));
+          return;
+        }
+
+        readerPreviewCleanupUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+        readerPreviewCleanupUrlsRef.current = preview.cleanupUrls;
+        setReaderFastPreviewUrl(preview.url);
+        setReaderPreviewReady(false);
+        setReaderPreviewSpreadCount(preview.spreadCount);
+        setReaderPreviewSpreadIndex(0);
+        readerPreviewSpreadIndexRef.current = 0;
+        readerPreviewLoadedPagesRef.current = preview.pageCount;
+        setReaderAtStart(true);
+        setReaderAtEnd(preview.spreadCount <= 1);
+
+        if (readerTimerFrameRef.current) {
+          window.cancelAnimationFrame(readerTimerFrameRef.current);
+          readerTimerFrameRef.current = null;
+        }
+
+        setReaderStatus("ready");
+      } catch (error) {
+        console.error("Unable to prepare the fast EPUB preview.", error);
+      }
+    })();
+  }, [readerBookData, readerStatus]);
+
+  useEffect(() => {
+    if (!readerBookData || !readerFastPreviewUrl || !readerPreviewReady) return;
+
+    const appendToken = readerPreviewAppendTokenRef.current + 1;
+    readerPreviewAppendTokenRef.current = appendToken;
+    let cancelled = false;
+
+    const appendNextPreviewChunk = async () => {
+      try {
+        const nextChunk = await extractFastPreviewChunkFromEpub(readerBookData.rawFile, {
+          skipPages: readerPreviewLoadedPagesRef.current,
+          maxPages: 4,
+        });
+
+        if (cancelled || readerPreviewAppendTokenRef.current !== appendToken) {
+          nextChunk.cleanupUrls.forEach((url) => URL.revokeObjectURL(url));
+          return;
+        }
+
+        if (nextChunk.pageCount === 0) {
+          nextChunk.cleanupUrls.forEach((url) => URL.revokeObjectURL(url));
+          return;
+        }
+
+        readerPreviewCleanupUrlsRef.current.push(...nextChunk.cleanupUrls);
+        readerPreviewLoadedPagesRef.current += nextChunk.pageCount;
+
+        const previewTrack =
+          readerFastPreviewIframeRef.current?.contentDocument?.getElementById("prism-preview-track");
+        const previewHead = readerFastPreviewIframeRef.current?.contentDocument?.head;
+        if (previewHead && nextChunk.headMarkup) {
+          previewHead.insertAdjacentHTML("beforeend", nextChunk.headMarkup);
+        }
+
+        if (previewTrack) {
+          previewTrack.insertAdjacentHTML("beforeend", nextChunk.spreadsHtml.join("\n"));
+        }
+
+        setReaderPreviewSpreadCount((currentCount) => {
+          const nextCount = currentCount + nextChunk.spreadCount;
+          const currentIndex = readerPreviewSpreadIndexRef.current;
+          setReaderAtEnd(currentIndex >= nextCount - 1);
+          return nextCount;
+        });
+
+        if (nextChunk.hasMore) {
+          window.setTimeout(() => {
+            void appendNextPreviewChunk();
+          }, 0);
+        }
+      } catch (error) {
+        if (cancelled || readerPreviewAppendTokenRef.current !== appendToken) return;
+        console.error("Unable to extend fast EPUB preview in the background.", error);
+      }
+    };
+
+    void appendNextPreviewChunk();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [readerBookData, readerFastPreviewUrl, readerPreviewReady]);
+
+  useEffect(() => {
+    if (!readerBookData || !readerViewportRef.current) {
+      return;
+    }
