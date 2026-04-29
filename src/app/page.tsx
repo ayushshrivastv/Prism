@@ -2485,3 +2485,106 @@ export default function HomePage() {
     setReaderAtStart(Boolean(location.atStart));
     setReaderAtEnd(Boolean(location.atEnd));
 
+    const activeBookId = readerActiveBookIdRef.current;
+    if (!activeBookId) return;
+
+    const readerBook = readerBookInstanceRef.current as
+      | (EpubBookInstance & {
+          locations?: {
+            total?: number;
+            length?: () => number;
+          };
+        })
+      | null;
+    const totalPages =
+      (typeof readerBook?.locations?.total === "number" ? readerBook.locations.total : 0) ||
+      (typeof readerBook?.locations?.length === "function" ? readerBook.locations.length() : 0) ||
+      0;
+    const locationIndex =
+      typeof location.start?.location === "number"
+        ? location.start.location
+        : typeof location.end?.location === "number"
+          ? location.end.location
+          : -1;
+    const displayedPage =
+      typeof location.start?.displayed?.page === "number" ? location.start.displayed.page : 0;
+    const nextCurrentPage =
+      locationIndex >= 0
+        ? locationIndex + 1
+        : displayedPage > 0
+          ? displayedPage
+          : readerSessionCurrentPageRef.current;
+    const nextTotalPages =
+      totalPages > 0
+        ? totalPages
+        : typeof location.start?.displayed?.total === "number"
+          ? location.start.displayed.total
+          : readerSessionTotalPagesRef.current;
+    const nextProgress =
+      nextTotalPages > 0
+        ? Math.max(0, Math.min(100, Math.round((nextCurrentPage / nextTotalPages) * 100)))
+        : readerSessionProgressRef.current;
+
+    readerSessionCurrentPageRef.current = nextCurrentPage;
+    readerSessionTotalPagesRef.current = nextTotalPages;
+    readerSessionProgressRef.current = nextProgress;
+
+    setBooks((currentBooks) =>
+      currentBooks.map((book) =>
+        book.id === activeBookId
+          ? {
+              ...book,
+              currentPage: nextCurrentPage,
+              totalPages: nextTotalPages,
+              progress: nextProgress,
+              status: nextProgress >= 100 ? "finished" : "reading",
+            }
+          : book,
+      ),
+    );
+  };
+
+  const openBookReader = async (book: Book) => {
+    if (book.uploadStatus !== "ready") return;
+
+    destroyReaderInstance();
+    const loadStartedAt = getHighResolutionTime();
+    const preview = {
+      title: book.title,
+      coverUrl: book.coverUrl ?? null,
+    };
+
+    setOpenMenuBookId(null);
+    setReaderBookPreview(preview);
+    setReaderBookData(null);
+    setReaderElapsedMs(0);
+    setReaderErrorMessage(null);
+    setReaderAtStart(true);
+    setReaderAtEnd(false);
+    setReaderFastPreviewUrl(null);
+    setReaderEngineReady(false);
+    setReaderPreviewReady(false);
+    setReaderPreviewSpreadCount(0);
+    setReaderPreviewSpreadIndex(0);
+    readerPreviewSpreadIndexRef.current = 0;
+    readerPreviewLoadedPagesRef.current = 0;
+    readerActiveBookIdRef.current = book.id;
+    readerSessionStartedAtRef.current = getHighResolutionTime();
+    readerSessionStartPageRef.current = book.currentPage;
+    readerSessionCurrentPageRef.current = book.currentPage;
+    readerSessionTotalPagesRef.current = book.totalPages;
+    readerSessionProgressRef.current = book.progress;
+    setReaderStatus("loading");
+
+    const tickElapsed = () => {
+      setReaderElapsedMs(getHighResolutionTime() - loadStartedAt);
+      readerTimerFrameRef.current = window.requestAnimationFrame(tickElapsed);
+    };
+
+    readerTimerFrameRef.current = window.requestAnimationFrame(tickElapsed);
+
+    try {
+      const uploadedRecord =
+        uploadedBookDataRef.current[book.id] ??
+        (await loadUploadedBookRecord(book.id)) ??
+        (storeBooks.some((storeBook) => storeBook.id === book.id)
