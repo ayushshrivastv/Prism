@@ -3210,3 +3210,107 @@ export default function HomePage() {
             :where(pre, code) {
               white-space: pre-wrap !important;
               word-break: break-word !important;
+            }
+
+            :where(h1, h2, h3, h4, h5, h6) {
+              margin-top: 0;
+              margin-bottom: 0.7em;
+              line-height: 1.14;
+              letter-spacing: -0.01em;
+              text-wrap: balance;
+            }
+
+            :where(h1) {
+              font-size: 2.4em;
+            }
+
+            :where(h2) {
+              font-size: 1.9em;
+            }
+
+            :where(h3) {
+              font-size: 1.4em;
+            }
+
+            :where(a) {
+              color: inherit;
+              text-decoration-color: rgba(28, 27, 25, 0.28);
+              text-underline-offset: 0.15em;
+            }
+
+            :where(hr) {
+              margin: 1.35em auto;
+              width: 22%;
+              border: 0;
+              border-top: 1px solid rgba(28, 27, 25, 0.12);
+            }
+
+            ::selection {
+              background: rgba(255, 221, 87, 0.72);
+            }
+          `;
+
+          contents.document.head.appendChild(fitStyle);
+        });
+
+        await rendition.display();
+        if (readerMountTokenRef.current !== mountToken) return;
+        revealReader();
+
+        window.setTimeout(() => {
+          void book.locations
+            .generate(1400)
+            .then(() => {
+              if (readerMountTokenRef.current !== mountToken) return;
+              const currentLocation = rendition.location;
+              if (currentLocation) {
+                updateReaderLocation(currentLocation);
+              }
+            })
+            .catch((error: unknown) => {
+              console.error("Unable to generate EPUB locations.", error);
+            });
+        }, 0);
+      } catch (error) {
+        if (readerMountTokenRef.current !== mountToken) return;
+
+        if (readerTimerFrameRef.current) {
+          window.cancelAnimationFrame(readerTimerFrameRef.current);
+          readerTimerFrameRef.current = null;
+        }
+
+        setReaderStatus("error");
+        setReaderErrorMessage(
+          error instanceof Error ? error.message : "Unable to render this EPUB right now.",
+        );
+      }
+    })();
+
+    return () => {
+      if (readerMountTokenRef.current === mountToken) {
+        destroyReaderInstance();
+      }
+    };
+  }, [readerBookData, destroyReaderInstance]);
+
+  useEffect(() => {
+    if (readerStatus === "idle") return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeReaderOverlay();
+        return;
+      }
+
+      if (readerStatus !== "ready") return;
+
+      if (event.key === "ArrowRight") {
+        void goToNextReaderSpread();
+      }
+
+      if (event.key === "ArrowLeft") {
+        void goToPreviousReaderSpread();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
