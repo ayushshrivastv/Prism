@@ -3521,3 +3521,106 @@ export default function HomePage() {
                 <button
                   type="button"
                   onClick={() => void handleLogout()}
+                  disabled={isSigningOut}
+                  className="flex min-h-10 w-full items-center justify-center gap-2 rounded-[1rem] bg-[#191919] px-3 py-2.5 text-[0.82rem] font-medium tracking-[-0.02em] text-white transition-[transform,background-color,box-shadow] duration-150 hover:bg-black active:scale-[0.99] active:bg-[#0f0f10] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/10 focus-visible:ring-offset-2 focus-visible:ring-offset-[#f3f3f1] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isSigningOut ? (
+                    <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={1.9} />
+                  ) : (
+                    <LogOut className="h-4 w-4" strokeWidth={1.9} />
+                  )}
+                  <span>{isSigningOut ? "Logging out..." : "Logout"}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <section className="flex h-screen min-w-0 flex-col overflow-hidden">
+          <header className="flex items-center justify-between px-4 pb-3 pt-3">
+            <div />
+            <div className="flex items-center gap-4">
+              <button
+                type="button"
+                className="text-[0.82rem] font-medium tracking-[-0.02em] text-[#757575] transition-colors hover:text-[#3a3a3a]"
+              >
+                Read Docs
+              </button>
+              <button
+                type="button"
+                onClick={() => setCurrentPage("read")}
+                className="rounded-[0.9rem] bg-[#191919] px-4 py-2.5 text-[0.84rem] font-medium tracking-[-0.02em] text-white transition-[transform,background-color,box-shadow] duration-150 hover:bg-black active:scale-[0.98] active:bg-[#0f0f10] active:shadow-[inset_0_1px_2px_rgba(255,255,255,0.06)]"
+              >
+                Start Reading
+              </button>
+            </div>
+          </header>
+
+          <div className="min-h-0 flex-1 px-2 pb-2 pr-3">
+              <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[1.1rem] border border-[#dfdfdb] bg-white">
+              <div className="px-5 pb-3 pt-5">
+                <div className="flex items-start justify-between gap-5">
+                  {currentPage === "home" ? (
+                    <h2 className="text-[1.72rem] font-semibold tracking-[-0.065em] text-[#171717]">
+                      Home
+                    </h2>
+                  ) : currentPage === "store" ? (
+                    <h2 className="text-[1.72rem] font-semibold tracking-[-0.065em] text-[#171717]">
+                      Books Store
+                    </h2>
+                  ) : (
+                    <div />
+                  )}
+
+                  {currentPage === "home" ? (
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center rounded-full bg-[#ececea] p-1">
+                        {timeRanges.map((item) => (
+                          <button
+                            key={item}
+                            type="button"
+                            onClick={() => setSelectedRange(item)}
+                            className={`rounded-full px-4 py-1.5 text-[0.82rem] font-semibold tracking-[-0.02em] ${
+                              selectedRange === item
+                                ? "bg-white text-[#181818] shadow-[0_1px_2px_rgba(0,0,0,0.12)]"
+                                : "text-[#666666]"
+                            }`}
+                          >
+                            {item}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+
+                {currentPage === "read" ? (
+                  <p className="mt-1.5 text-[1rem] font-medium tracking-[-0.035em] text-[#73737f] md:text-[1.18rem] lg:text-[1.34rem]">
+                    Welcome, <span className="font-semibold text-[#1f1f24]">{firstName}</span>. What
+                    are we going to read today?
+                  </p>
+                ) : currentPage === "store" ? (
+                  <p className="mt-1.5 text-[0.9rem] font-medium tracking-[-0.02em] text-[#7c7c84]">
+                    Add curated books to your reading list.
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="visible-scrollbar min-h-0 flex-1 overflow-y-auto px-5 pb-5">
+              {currentPage === "home" ? (
+              <>
+              <section className="overflow-hidden rounded-[1.1rem] border border-[#dfdfdb]">
+                <div className="grid gap-0 lg:grid-cols-[1.5fr_0.9fr]">
+                  <article className="border-b border-[#dfdfdb] px-4 py-4 lg:border-b-0 lg:border-r">
+                    <div className="text-[0.86rem] font-medium tracking-[-0.02em] text-[#565656]">
+                      <span>Time spent reading</span>
+                    </div>
+                    <div className="mt-3 flex items-end justify-between gap-4">
+                      <div>
+                        <p className="text-[1.56rem] font-semibold tracking-[-0.055em] text-[#272727]">
+                          {activeProgress.timeSpent}
+                        </p>
+                        <p className="mt-1 text-[0.8rem] font-medium tracking-[-0.01em] text-[#878787]">
+                          {activeProgress.label} goal: {Math.floor(activeProgress.goal / 60)}h{" "}
+                          {activeProgress.goal % 60}m
+                        </p>
