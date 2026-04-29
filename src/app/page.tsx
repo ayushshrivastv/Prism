@@ -2174,3 +2174,107 @@ export default function HomePage() {
     readerActiveBookIdRef.current = null;
     readerSessionStartedAtRef.current = null;
     readerSessionStartPageRef.current = 0;
+    readerSessionCurrentPageRef.current = 0;
+    readerSessionTotalPagesRef.current = 0;
+    readerSessionProgressRef.current = 0;
+  }, []);
+
+  const finalizeReaderSession = useCallback(() => {
+    const activeBookId = readerActiveBookIdRef.current;
+    const startedAt = readerSessionStartedAtRef.current;
+
+    if (!activeBookId || startedAt === null) {
+      resetReaderSessionTracking();
+      return;
+    }
+
+    const elapsedMinutes = Math.floor((getHighResolutionTime() - startedAt) / 60000);
+    const pagesRead = Math.max(
+      0,
+      readerSessionCurrentPageRef.current - readerSessionStartPageRef.current,
+    );
+
+    if (elapsedMinutes <= 0 && pagesRead <= 0) {
+      resetReaderSessionTracking();
+      return;
+    }
+
+    setRealReadingSessions((currentSessions) => {
+      const nextSessions = [
+        ...currentSessions,
+        {
+          bookId: activeBookId,
+          date: new Date().toISOString(),
+          minutes: Math.max(0, elapsedMinutes),
+          pages: pagesRead,
+        },
+      ];
+
+      return nextSessions.slice(-240);
+    });
+
+    resetReaderSessionTracking();
+  }, [resetReaderSessionTracking]);
+
+  const destroyReaderInstance = useCallback(() => {
+    finalizeReaderSession();
+    readerMountTokenRef.current += 1;
+    readerPreviewMountTokenRef.current += 1;
+    readerPreviewAppendTokenRef.current += 1;
+
+    if (readerTimerFrameRef.current) {
+      window.cancelAnimationFrame(readerTimerFrameRef.current);
+      readerTimerFrameRef.current = null;
+    }
+
+    readerRenditionRef.current?.destroy();
+    readerBookInstanceRef.current?.destroy();
+    readerRenditionRef.current = null;
+    readerBookInstanceRef.current = null;
+    readerPreviewCleanupUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    readerPreviewCleanupUrlsRef.current = [];
+  }, [finalizeReaderSession]);
+
+  const closeReaderOverlay = useCallback(() => {
+    destroyReaderInstance();
+    setReaderBookPreview(null);
+    setReaderBookData(null);
+    setReaderElapsedMs(0);
+    setReaderErrorMessage(null);
+    setReaderAtStart(true);
+    setReaderAtEnd(false);
+    setReaderFastPreviewUrl(null);
+    setReaderEngineReady(false);
+    setReaderPreviewReady(false);
+    setReaderPreviewSpreadCount(0);
+    setReaderPreviewSpreadIndex(0);
+    readerPreviewSpreadIndexRef.current = 0;
+    setReaderStatus("idle");
+  }, [destroyReaderInstance]);
+
+  const handleGoogleSignIn = useCallback(async () => {
+    setAuthActionError(null);
+    setIsSigningIn(true);
+
+    try {
+      await signInWithPopup(firebaseAuth, googleAuthProvider);
+    } catch (error) {
+      const authError = error as { code?: string; message?: string };
+
+      if (
+        authError.code === "auth/popup-blocked" ||
+        authError.code === "auth/operation-not-supported-in-this-environment"
+      ) {
+        try {
+          await signInWithRedirect(firebaseAuth, googleAuthProvider);
+          return;
+        } catch (redirectError) {
+          console.error("Unable to redirect to Google sign-in.", redirectError);
+        }
+      }
+
+      if (authError.code === "auth/popup-closed-by-user") {
+        setIsSigningIn(false);
+        return;
+      }
+
