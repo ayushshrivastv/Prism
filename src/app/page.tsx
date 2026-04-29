@@ -2278,3 +2278,106 @@ export default function HomePage() {
         return;
       }
 
+      if (authError.code === "auth/unauthorized-domain") {
+        setAuthActionError(
+          "Add this local domain to Firebase Authentication authorized domains, then try again.",
+        );
+      } else {
+        setAuthActionError("Unable to sign in with Google right now.");
+      }
+
+      console.error("Unable to sign in with Google.", error);
+    } finally {
+      setIsSigningIn(false);
+    }
+  }, []);
+
+  const handleLogout = useCallback(async () => {
+    setIsProfileMenuOpen(false);
+    setOpenMenuBookId(null);
+    setStorePromptBookId(null);
+    setSelectedRange("24h");
+    setCurrentPage("home");
+    closeReaderOverlay();
+    setAuthActionError(null);
+    setIsSigningOut(true);
+
+    try {
+      await signOut(firebaseAuth);
+    } catch (error) {
+      console.error("Unable to sign out.", error);
+    } finally {
+      setIsSigningOut(false);
+    }
+  }, [closeReaderOverlay]);
+
+  const ensureStoreBookRecord = useCallback(async (storeBookId: string) => {
+    const storeBook = storeBooks.find((book) => book.id === storeBookId);
+    if (!storeBook) {
+      throw new Error("This bundled bookstore book is unavailable.");
+    }
+
+    const cachedRecord =
+      uploadedBookDataRef.current[storeBookId] ?? (await loadUploadedBookRecord(storeBookId));
+    if (cachedRecord) {
+      uploadedBookDataRef.current[storeBookId] = cachedRecord;
+      return cachedRecord;
+    }
+
+    const existingPromise = storeBookRecordPromisesRef.current[storeBookId];
+    if (existingPromise) {
+      return existingPromise;
+    }
+
+    const nextPromise = (async () => {
+      const response = await fetch(storeBook.path);
+      if (!response.ok) {
+        throw new Error("Unable to fetch the bundled EPUB.");
+      }
+
+      const rawFile = await response.arrayBuffer();
+      const storedRecord: UploadedBookData = {
+        bookId: storeBook.id,
+        title: storeBook.title,
+        author: storeBook.author,
+        coverUrl: storeBook.coverUrl,
+        fileName: storeBook.fileName,
+        fileSize: rawFile.byteLength,
+        uploadedAt: new Date().toISOString(),
+        rawFile,
+        spine: [],
+      };
+
+      uploadedBookDataRef.current[storeBook.id] = storedRecord;
+      await saveUploadedBookRecord(storedRecord);
+      return storedRecord;
+    })();
+
+    storeBookRecordPromisesRef.current[storeBookId] = nextPromise;
+
+    try {
+      return await nextPromise;
+    } finally {
+      delete storeBookRecordPromisesRef.current[storeBookId];
+    }
+  }, []);
+
+  const syncPreviewNavigationState = useCallback(
+    (iframeElement?: HTMLIFrameElement | null) => {
+      const previewIframe = iframeElement ?? readerFastPreviewIframeRef.current;
+      const previewWindow = previewIframe?.contentWindow;
+      const previewDocument = previewWindow?.document;
+      if (!previewWindow || !previewDocument) return;
+
+      const previewTrack = previewDocument.getElementById("prism-preview-track");
+      const scrollingElement =
+        previewTrack ??
+        previewDocument.scrollingElement ??
+        previewDocument.documentElement ??
+        previewDocument.body;
+      const viewportWidth =
+        previewTrack?.clientWidth || previewWindow.innerWidth || previewIframe?.clientWidth || 1;
+      const totalSpreads = Math.max(
+        1,
+        Math.round((scrollingElement.scrollWidth || viewportWidth) / viewportWidth),
+      );
