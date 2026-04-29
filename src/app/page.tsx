@@ -2381,3 +2381,107 @@ export default function HomePage() {
         1,
         Math.round((scrollingElement.scrollWidth || viewportWidth) / viewportWidth),
       );
+      const currentIndex = Math.max(
+        0,
+        Math.min(
+          totalSpreads - 1,
+          Math.round((scrollingElement.scrollLeft || previewWindow.scrollX || 0) / viewportWidth),
+        ),
+      );
+
+      readerPreviewSpreadIndexRef.current = currentIndex;
+      setReaderPreviewSpreadCount(totalSpreads);
+      setReaderPreviewSpreadIndex(currentIndex);
+      setReaderAtStart(currentIndex === 0);
+      setReaderAtEnd(currentIndex >= totalSpreads - 1);
+    },
+    [],
+  );
+
+  const goToPreviewSpread = useCallback(
+    (targetIndex: number) => {
+      const previewIframe = readerFastPreviewIframeRef.current;
+      const previewWindow = previewIframe?.contentWindow;
+      const previewDocument = previewWindow?.document;
+      if (!previewIframe || !previewWindow || !previewDocument) return;
+
+      const previewTrack = previewDocument.getElementById("prism-preview-track");
+      const scrollingElement =
+        previewTrack ??
+        previewDocument.scrollingElement ??
+        previewDocument.documentElement ??
+        previewDocument.body;
+      const viewportWidth =
+        previewTrack?.clientWidth || previewWindow.innerWidth || previewIframe.clientWidth || 1;
+      const totalSpreads =
+        readerPreviewSpreadCount ||
+        Math.max(1, Math.round((scrollingElement.scrollWidth || viewportWidth) / viewportWidth));
+      const nextIndex = Math.max(0, Math.min(totalSpreads - 1, targetIndex));
+
+      scrollingElement.scrollTo({
+        left: nextIndex * viewportWidth,
+        top: 0,
+        behavior: "smooth",
+      });
+
+      window.setTimeout(() => {
+        syncPreviewNavigationState(previewIframe);
+      }, 220);
+    },
+    [readerPreviewSpreadCount, syncPreviewNavigationState],
+  );
+
+  const goToPreviousReaderSpread = useCallback(async () => {
+    if (isPreviewVisible) {
+      goToPreviewSpread(readerPreviewSpreadIndexRef.current - 1);
+      return;
+    }
+
+    try {
+      const rendition = readerRenditionRef.current;
+      if (!rendition || typeof rendition.prev !== "function") return;
+      await rendition.prev();
+    } catch (error) {
+      console.error("Unable to go to previous EPUB page.", error);
+    }
+  }, [goToPreviewSpread, isPreviewVisible]);
+
+  const goToNextReaderSpread = useCallback(async () => {
+    if (isPreviewVisible) {
+      goToPreviewSpread(readerPreviewSpreadIndexRef.current + 1);
+      return;
+    }
+
+    try {
+      const rendition = readerRenditionRef.current;
+      if (!rendition || typeof rendition.next !== "function") return;
+      await rendition.next();
+    } catch (error) {
+      console.error("Unable to go to next EPUB page.", error);
+    }
+  }, [goToPreviewSpread, isPreviewVisible]);
+
+  const handleReaderWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
+    if (Math.abs(event.deltaX) <= Math.abs(event.deltaY) || Math.abs(event.deltaX) < 28) {
+      return;
+    }
+
+    event.preventDefault();
+
+    const now = window.performance.now();
+    if (now - readerWheelLockRef.current < 420) return;
+    readerWheelLockRef.current = now;
+
+    if (event.deltaX > 0) {
+      void goToNextReaderSpread();
+    } else {
+      void goToPreviousReaderSpread();
+    }
+  };
+
+  const updateReaderLocation = (location: EpubLocation | null | undefined) => {
+    if (!location) return;
+
+    setReaderAtStart(Boolean(location.atStart));
+    setReaderAtEnd(Boolean(location.atEnd));
+
