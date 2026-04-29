@@ -3003,3 +3003,106 @@ export default function HomePage() {
     if (!readerBookData || !readerViewportRef.current) {
       return;
     }
+
+    const viewportElement = readerViewportRef.current;
+    const mountToken = readerMountTokenRef.current + 1;
+    readerMountTokenRef.current = mountToken;
+
+    void (async () => {
+      try {
+        const epubModule = await import("epubjs/lib/index.js");
+        if (readerMountTokenRef.current !== mountToken || !viewportElement) return;
+        let initialSpreadIsVisible = false;
+
+        const ePubFactory = epubModule.default;
+        const book = ePubFactory(readerBookData.rawFile, {
+          encoding: "binary",
+          openAs: "epub",
+          replacements: "blobUrl",
+        });
+
+        readerBookInstanceRef.current = book;
+
+        const rendition = book.renderTo(viewportElement, {
+          width: "100%",
+          height: "100%",
+          flow: "paginated",
+          spread: "always",
+          minSpreadWidth: 960,
+        });
+
+        readerRenditionRef.current = rendition;
+        viewportElement.style.width = "100%";
+        viewportElement.style.height = "100%";
+        viewportElement.style.overflow = "hidden";
+
+        const revealReader = () => {
+          if (initialSpreadIsVisible || readerMountTokenRef.current !== mountToken) return;
+
+          initialSpreadIsVisible = true;
+          const syncAndReveal = async () => {
+            const previewSpreadIndex = readerPreviewSpreadIndexRef.current;
+            if (previewSpreadIndex > 0) {
+              for (let step = 0; step < previewSpreadIndex; step += 1) {
+                // Keep engine position aligned with the preview before revealing it.
+                // This avoids snapping back to the opening spread when the background engine finishes.
+                await rendition.next();
+              }
+            }
+
+            if (readerMountTokenRef.current !== mountToken) return;
+            setReaderEngineReady(true);
+          };
+
+          void syncAndReveal().catch((error) => {
+            console.error("Unable to align EPUB rendition with preview spread.", error);
+            if (readerMountTokenRef.current !== mountToken) return;
+            setReaderEngineReady(true);
+          });
+
+          if (readerTimerFrameRef.current) {
+            window.cancelAnimationFrame(readerTimerFrameRef.current);
+            readerTimerFrameRef.current = null;
+          }
+
+          setReaderStatus("ready");
+        };
+
+        rendition.themes.default({
+          body: {
+            background: "#ffffff",
+            margin: "0",
+            "padding-top": "28px",
+            "padding-bottom": "32px",
+            "padding-left": "48px",
+            "padding-right": "48px",
+            "box-sizing": "border-box",
+          },
+        });
+
+        rendition.on("relocated", (location: EpubLocation) => {
+          updateReaderLocation(location);
+          revealReader();
+        });
+
+        rendition.on("rendered", () => {
+          revealReader();
+        });
+
+        rendition.hooks.content.register((contents: { document: Document }) => {
+          contents.document.documentElement.style.background = "#ffffff";
+          contents.document.documentElement.style.maxWidth = "100%";
+          contents.document.documentElement.style.overflowX = "hidden";
+          contents.document.documentElement.style.boxSizing = "border-box";
+          contents.document.body.style.background = "#ffffff";
+          contents.document.body.style.maxWidth = "100%";
+          contents.document.body.style.overflowX = "hidden";
+          contents.document.body.style.boxSizing = "border-box";
+
+          const existingStyle = contents.document.getElementById("prism-reader-fit-style");
+          existingStyle?.remove();
+
+          const fitStyle = contents.document.createElement("style");
+          fitStyle.id = "prism-reader-fit-style";
+          fitStyle.textContent = `
+            *, *::before, *::after {
