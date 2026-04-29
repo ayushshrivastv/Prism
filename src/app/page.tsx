@@ -3106,3 +3106,107 @@ export default function HomePage() {
           fitStyle.id = "prism-reader-fit-style";
           fitStyle.textContent = `
             *, *::before, *::after {
+              box-sizing: border-box !important;
+            }
+
+            html, body {
+              max-width: 100%;
+              overflow-x: hidden;
+              background: #ffffff;
+            }
+
+            :where(body) {
+              color: #1c1b19;
+              font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+              font-size: 17px;
+              line-height: 1.4;
+              letter-spacing: 0;
+              text-rendering: optimizeLegibility;
+              -webkit-font-smoothing: antialiased;
+              hyphens: auto;
+              -webkit-hyphens: auto;
+            }
+
+            :where(img, svg, video, canvas, table, pre, iframe) {
+              max-width: 100% !important;
+            }
+
+            :where(table, pre) {
+              overflow-x: hidden;
+            }
+
+            :where(p) {
+              margin: 0 0 0.72em;
+              text-wrap: pretty;
+              orphans: 2;
+              widows: 2;
+            }
+
+            :where(figure) {
+              margin: 0.15em 0 1em;
+              break-inside: avoid;
+              page-break-inside: avoid;
+            }
+
+            :where(.prism-fast-page-media) {
+              display: grid;
+              grid-template-rows: minmax(0, 1fr) auto;
+              align-items: center;
+              max-height: 100%;
+              height: 100%;
+              min-height: 0;
+              overflow: hidden;
+              margin: 0.1em 0 0.8em;
+            }
+
+            :where(figcaption) {
+              margin-top: 0.72em;
+              font-size: 0.84em;
+              line-height: 1.35;
+              text-align: center;
+              color: #7d7d80;
+              font-style: italic;
+            }
+
+            :where(.prism-fast-page-media > img, .prism-fast-page-media > svg, .prism-fast-page-media > video, .prism-fast-page-media > canvas) {
+              width: 100%;
+              max-height: 100%;
+              min-height: 0;
+            }
+
+            :where(.prism-fast-page-media img, .prism-fast-page-media svg, .prism-fast-page-media video, .prism-fast-page-media canvas) {
+              max-height: min(100%, 30vh);
+            }
+
+            :where(.prism-fast-page-media figcaption) {
+              margin-top: 0.5em;
+            }
+
+            :where(img, svg, video, canvas) {
+              max-height: 34vh;
+              height: auto;
+              object-fit: contain;
+              display: block;
+              margin: 0 auto;
+              break-inside: avoid;
+              page-break-inside: avoid;
+            }
+
+            :where(blockquote, ul, ol, pre, table) {
+              margin: 0.15em 0 0.95em;
+              max-width: 100%;
+            }
+
+            :where(blockquote) {
+              padding-left: 1em;
+              border-left: 1px solid rgba(28, 27, 25, 0.16);
+              font-style: italic;
+            }
+
+            :where(ul, ol) {
+              padding-left: 1.1em;
+            }
+
+            :where(pre, code) {
+              white-space: pre-wrap !important;
+              word-break: break-word !important;
