@@ -2796,3 +2796,106 @@ export default function HomePage() {
       try {
         const parsedSummaries = JSON.parse(storedSummaries) as Book[];
         window.requestAnimationFrame(() => {
+          setBooks((currentBooks) => mergeBooks(currentBooks, parsedSummaries));
+        });
+      } catch (error) {
+        console.error("Unable to parse stored book summaries.", error);
+      }
+    }
+
+    loadUploadedBookRecords()
+      .then((records) => {
+        const normalizedRecords = records.map((record) => ({
+          bookId: record.bookId,
+          title: record.title,
+          author: record.author,
+          coverUrl: record.coverUrl,
+          fileName: record.fileName,
+          fileSize: record.fileSize,
+          uploadedAt: record.uploadedAt,
+          rawFile: record.rawFile,
+          spine: record.spine,
+        }));
+        const uploadedBooksFromStorage: Book[] = records.map((record) => ({
+          id: record.bookId,
+          title: record.title,
+          author: record.author,
+          progress: 0,
+          totalPages: 0,
+          currentPage: 0,
+          status: "reading",
+          coverUrl: record.coverUrl,
+          source: "upload",
+          uploadStatus: "ready",
+          uploadProgress: 100,
+          uploadLoadedBytes: record.fileSize,
+          uploadTotalBytes: record.fileSize,
+          errorMessage: null,
+        }));
+
+        uploadedBookDataRef.current = Object.fromEntries(
+          normalizedRecords.map((record) => [record.bookId, record]),
+        );
+        setBooks((currentBooks) => mergeBooks(currentBooks, uploadedBooksFromStorage));
+
+        void Promise.all(
+          normalizedRecords.map((record) => saveUploadedBookRecord(record)),
+        ).catch((error) => {
+          console.error("Unable to normalize stored uploaded books.", error);
+        });
+      })
+      .catch((error) => {
+        console.error("Unable to restore uploaded books.", error);
+      });
+  }, []);
+
+  useEffect(() => {
+    const uploadedSummaries = books.filter(
+      (book) => book.source === "upload" && book.uploadStatus === "ready",
+    );
+
+    window.localStorage.setItem(
+      UPLOADED_BOOK_SUMMARIES_KEY,
+      JSON.stringify(uploadedSummaries),
+    );
+  }, [books]);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      READING_SESSIONS_KEY,
+      JSON.stringify(realReadingSessions),
+    );
+  }, [realReadingSessions]);
+
+  useEffect(() => {
+    return () => {
+      if (comingSoonTimerRef.current) {
+        clearTimeout(comingSoonTimerRef.current);
+      }
+      destroyReaderInstance();
+    };
+  }, [destroyReaderInstance]);
+
+  useEffect(() => {
+    if (!isProfileMenuOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (profileMenuRef.current?.contains(event.target as Node)) return;
+      setIsProfileMenuOpen(false);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsProfileMenuOpen(false);
+      }
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isProfileMenuOpen]);
+
