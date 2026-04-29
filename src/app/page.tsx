@@ -3417,3 +3417,107 @@ export default function HomePage() {
                             className={`rounded-[1rem] border px-4 py-3 transition-colors ${
                               book.uploadStatus === "ready"
                                 ? "cursor-pointer border-[#dfdfdb] bg-white/60 hover:bg-white"
+                                : "border-[#dfdfdb] bg-white/60"
+                            }`}
+                            onClick={
+                              book.uploadStatus === "ready"
+                                ? () => void openBookReader(book)
+                                : undefined
+                            }
+                          >
+                            <div className="flex items-start gap-3">
+                              <div className="mt-0.5 flex h-12 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[0.8rem] bg-[#ececea]">
+                                {book.coverUrl ? (
+                                  <Image
+                                    src={book.coverUrl}
+                                    alt={`${book.title} cover`}
+                                    width={40}
+                                    height={48}
+                                    unoptimized
+                                    className="h-full w-full object-cover"
+                                  />
+                                ) : (
+                                  <BookOpen
+                                    className="h-4.5 w-4.5 text-[#2c2c2c]"
+                                    strokeWidth={2}
+                                  />
+                                )}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-[0.8rem] font-medium text-[#1e1e1e]">
+                                  {book.title}
+                                </p>
+                                {book.uploadStatus === "uploading" ? (
+                                  <div className="mt-1">
+                                    <p className="text-[0.72rem] text-[#7b7b7b]">
+                                      Uploading...
+                                    </p>
+                                    <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[#ececea]">
+                                      <div
+                                        className="h-full rounded-full bg-[#7f56d9] transition-all duration-200"
+                                        style={{ width: `${book.uploadProgress ?? 0}%` }}
+                                      />
+                                    </div>
+                                    <p className="mt-1 text-[0.68rem] text-[#9a9a9a]">
+                                      {formatStorageProgress(
+                                        book.uploadLoadedBytes,
+                                        book.uploadTotalBytes,
+                                      )}
+                                    </p>
+                                  </div>
+                                ) : book.uploadStatus === "error" ? (
+                                  <p className="mt-1 text-[0.72rem] text-[#b55151]">
+                                    {book.errorMessage}
+                                  </p>
+                                ) : (
+                                  <>
+                                    <p className="mt-1 text-[0.72rem] text-[#7b7b7b]">
+                                      Added to collection
+                                    </p>
+                                    <p className="mt-0.5 text-[0.72rem] text-[#9a9a9a]">
+                                      {book.author}
+                                    </p>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  ) : null}
+                </div>
+              </nav>
+          </div>
+
+          <div className="px-4 py-3">
+            <div ref={profileMenuRef} className="relative">
+              <button
+                type="button"
+                aria-expanded={isProfileMenuOpen}
+                aria-controls="sidebar-profile-menu"
+                onClick={() => setIsProfileMenuOpen((currentValue) => !currentValue)}
+                className="flex min-h-10 w-full items-center gap-2 rounded-[1rem] px-2 text-left transition-colors hover:bg-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/10"
+              >
+                <div className="relative h-9 w-9 shrink-0 rounded-full border border-[#d3d3cf] bg-[radial-gradient(circle_at_30%_30%,#4f7dc0,transparent_38%),linear-gradient(180deg,#e8dcc4_0%,#c78d52_40%,#3a2d27_75%,#1d1d1d_100%)]">
+                  <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 rounded-full bg-[#1d1d1d] px-1.5 py-[1px] text-[0.5rem] font-semibold uppercase tracking-[0.02em] text-white">
+                    {viewerBadge}
+                  </span>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <span className="block whitespace-nowrap text-[0.82rem] font-medium tracking-[-0.02em] text-[#4b4b4b]">
+                    {viewerName}
+                  </span>
+                </div>
+              </button>
+
+              <div
+                id="sidebar-profile-menu"
+                className={`overflow-hidden transition-[max-height,opacity,transform,margin] duration-200 ease-out ${
+                  isProfileMenuOpen
+                    ? "mt-2 max-h-20 translate-y-0 opacity-100"
+                    : "pointer-events-none mt-0 max-h-0 translate-y-2 opacity-0"
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => void handleLogout()}
