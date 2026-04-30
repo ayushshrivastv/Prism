@@ -3728,3 +3728,107 @@ export default function HomePage() {
                       stroke="#ebe7f6"
                       strokeWidth="4"
                       strokeLinecap="round"
+                    />
+                    <path
+                      d={timelineChart.areaPath}
+                      fill="url(#prism-session-timeline-fill)"
+                      opacity="0.95"
+                    />
+                    <path
+                      d={timelineChart.linePath}
+                      stroke="#7f56d9"
+                      strokeWidth="4"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <circle
+                      cx={timelineChart.lastPoint.x}
+                      cy={timelineChart.lastPoint.y}
+                      r="9"
+                      fill="white"
+                      stroke="#7f56d9"
+                      strokeWidth="4"
+                    />
+                    <defs>
+                      <linearGradient id="prism-session-timeline-fill" x1="0" y1="20" x2="0" y2="92">
+                        <stop offset="0%" stopColor="#c9b6f5" stopOpacity="0.4" />
+                        <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+                      </linearGradient>
+                    </defs>
+                  </svg>
+                </article>
+              </section>
+
+              <section className="mt-9">
+                <h3 className="text-[1.72rem] font-semibold tracking-[-0.065em] text-[#171717]">
+                  Updates
+                </h3>
+
+                <div className="mt-5 space-y-6">
+                  {updates.map(({ title, time, description, icon }) => (
+                    <article key={title} className="flex items-start gap-4">
+                      <UpdatesIcon icon={icon} />
+                      <div className="max-w-4xl">
+                        <p className="text-[0.82rem] font-medium tracking-[-0.01em] text-[#7b7b7b]">{time}</p>
+                        <h4 className="mt-1 text-[0.96rem] font-medium tracking-[-0.025em] text-[#2a2a2a]">
+                          {title}
+                        </h4>
+                        <p className="mt-2 text-[0.86rem] leading-6 tracking-[-0.01em] text-[#787878]">
+                          {description}
+                        </p>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
+              </>
+              ) : currentPage === "read" ? (
+              <section className="min-h-full pt-2">
+                  <input
+                    ref={epubInputRef}
+                    type="file"
+                    accept=".epub,application/epub+zip"
+                    className="hidden"
+                    onChange={handleEpubSelect}
+                  />
+
+                  <div className="visible-scrollbar flex w-full gap-4 overflow-x-auto pb-2">
+                    <button
+                      type="button"
+                      onClick={openEpubPicker}
+                      className="flex min-h-[190px] w-full max-w-[420px] min-w-[340px] items-center justify-center rounded-[1.05rem] border border-dashed border-[#d8d8de] bg-[#fcfcfd] text-[#7c7c89] transition-colors hover:bg-[#f7f7f9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/10"
+                    >
+                      <span className="flex items-center gap-2.5 text-[0.92rem] font-medium tracking-[-0.025em]">
+                        <Plus className="h-5 w-5" strokeWidth={1.8} />
+                        <span>Upload Book</span>
+                      </span>
+                    </button>
+
+                    {uploadedBooks.map((book) => (
+                      <article
+                        key={`read-cover-${book.id}`}
+                        className="w-[188px] min-w-[188px] shrink-0 rounded-[1.05rem] border border-[#e1e1dc] bg-white p-3 shadow-[0_16px_40px_rgba(17,17,17,0.06)]"
+                      >
+                        <div
+                          className={`w-full ${
+                            book.uploadStatus === "ready" ? "cursor-pointer" : ""
+                          }`}
+                          onClick={
+                            book.uploadStatus === "ready"
+                              ? () => void openBookReader(book)
+                              : undefined
+                          }
+                        >
+                          <div className="relative h-[250px] overflow-hidden rounded-[0.9rem] bg-[#efefed]">
+                            {book.coverUrl ? (
+                              <Image
+                                src={book.coverUrl}
+                                alt={`${book.title} cover`}
+                                fill
+                                unoptimized
+                                className="object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-full items-center justify-center">
+                                <BookOpen
+                                  className="h-10 w-10 text-[#85858d]"
