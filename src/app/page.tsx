@@ -3935,3 +3935,210 @@ export default function HomePage() {
                           onClick={() => setStorePromptBookId(book.id)}
                           className="w-full text-left"
                         >
+                          <div className="relative mx-auto aspect-[0.68] w-full max-w-[216px] overflow-hidden rounded-[1rem] bg-[#efefed]">
+                            {displayCoverUrl ? (
+                              <Image
+                                src={displayCoverUrl}
+                                alt={`${displayTitle} cover`}
+                                fill
+                                unoptimized
+                                className="object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-full items-center justify-center">
+                                <BookOpen className="h-14 w-14 text-[#85858d]" strokeWidth={1.8} />
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="mt-4">
+                            <p className="truncate text-[0.94rem] font-medium tracking-[-0.03em] text-[#2b2b30]">
+                              {displayTitle}
+                            </p>
+                            <p className="mt-1.5 text-[0.82rem] font-medium tracking-[-0.01em] text-[#8a8a93]">
+                              {displayAuthor}
+                            </p>
+                            <p className="mt-2.5 text-[0.82rem] font-medium tracking-[-0.01em] text-[#8a8a93]">
+                              {addedBookIds.has(book.id) ? "Added to reading list" : "Add to reading list"}
+                            </p>
+                          </div>
+                        </button>
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
+              )}
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      {storePromptBookId ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/20 px-4">
+          <div className="w-full max-w-[420px] rounded-[1.25rem] border border-[#dfdfdb] bg-white p-6 shadow-[0_24px_60px_rgba(17,17,17,0.14)]">
+            <h3 className="text-[1.08rem] font-semibold tracking-[-0.04em] text-[#191919]">
+              Add this book to your reading list?
+            </h3>
+            <p className="mt-2 text-[0.88rem] leading-6 tracking-[-0.01em] text-[#73737f]">
+              It will appear on your Read page and in My Collections.
+            </p>
+            <div className="mt-5 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setStorePromptBookId(null)}
+                className="rounded-[0.85rem] px-4 py-2 text-[0.84rem] font-medium tracking-[-0.02em] text-[#666666] transition-colors hover:bg-[#f3f3f1]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void addStoreBookToReadingList(storePromptBookId)}
+                disabled={storeActionLoading === storePromptBookId}
+                className="rounded-[0.85rem] bg-[#191919] px-4 py-2 text-[0.84rem] font-medium tracking-[-0.02em] text-white transition-colors hover:bg-black disabled:opacity-60"
+              >
+                {storeActionLoading === storePromptBookId ? "Adding..." : "Add book"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {readerStatus !== "idle" ? (
+        <div className="fixed inset-0 z-50 bg-white">
+          <div className="relative flex h-full min-h-0 flex-col bg-white">
+            {readerStatus === "error" ? (
+              <div className="flex min-h-0 flex-1 items-center justify-center px-6">
+                <div className="rounded-[1.2rem] border border-[#dfdfdb] bg-white px-8 py-7 text-center shadow-[0_18px_40px_rgba(17,17,17,0.06)]">
+                  <p className="text-[1rem] font-medium tracking-[-0.03em] text-[#2a2a2f]">
+                    {readerErrorMessage ?? "We couldn’t open this book."}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={closeReaderOverlay}
+                    className="mt-4 rounded-full bg-[#191919] px-4 py-2 text-[0.82rem] font-medium text-white"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="min-h-0 flex-1 px-0 pb-0">
+                  <div className="relative flex h-full min-h-0 flex-col">
+                    {readerStatus !== "loading"
+                      ? readerExitHintPositions.map(
+                          ({ id, wrapperClassName, badgeClassName }) => (
+                            <div
+                              key={id}
+                              className={`group pointer-events-auto absolute z-20 flex h-24 w-24 ${wrapperClassName}`}
+                            >
+                              <div
+                                className={`pointer-events-none rounded-full border border-[#e5e4df] bg-white/94 px-3 py-1.5 text-[0.72rem] font-medium tracking-[-0.02em] text-[#6f6f78] opacity-0 shadow-[0_10px_24px_rgba(17,17,17,0.06)] transition duration-200 group-hover:scale-100 group-hover:opacity-100 ${badgeClassName} scale-95`}
+                              >
+                                Esc to exit
+                              </div>
+                            </div>
+                          ),
+                        )
+                      : null}
+
+                    <button
+                      type="button"
+                      onClick={goToPreviousReaderSpread}
+                      disabled={(!readerEngineReady && !readerPreviewReady) || readerAtStart}
+                      className="absolute left-2 top-1/2 z-10 flex h-14 w-14 -translate-y-1/2 items-center justify-center rounded-full bg-white/92 text-[#2f2f35] shadow-[0_10px_30px_rgba(17,17,17,0.08)] transition disabled:opacity-30 md:left-3"
+                    >
+                      <ChevronLeft className="h-7 w-7" strokeWidth={1.8} />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={goToNextReaderSpread}
+                      disabled={(!readerEngineReady && !readerPreviewReady) || readerAtEnd}
+                      className="absolute right-2 top-1/2 z-10 flex h-14 w-14 -translate-y-1/2 items-center justify-center rounded-full bg-white/92 text-[#2f2f35] shadow-[0_10px_30px_rgba(17,17,17,0.08)] transition disabled:opacity-30 md:right-3"
+                    >
+                      <ChevronRight className="h-7 w-7" strokeWidth={1.8} />
+                    </button>
+
+                    <div
+                      className="min-h-0 flex-1 overflow-hidden bg-white"
+                      onWheel={handleReaderWheel}
+                      >
+                        <div className="h-full min-h-0 bg-white">
+                        {shouldRenderPreviewFrame ? (
+                          <iframe
+                            ref={readerFastPreviewIframeRef}
+                            title={`${readerBookPreview?.title ?? "Book"} preview`}
+                            src={readerFastPreviewUrl ?? undefined}
+                            className="h-full w-full border-0"
+                            onLoad={(event) => {
+                              const iframeElement = event.currentTarget;
+                              const previewWindow = iframeElement.contentWindow;
+                              const previewDocument = previewWindow?.document;
+                              const previewTrack =
+                                previewDocument?.getElementById("prism-preview-track");
+
+                              setReaderPreviewReady(true);
+
+                              const syncState = () => syncPreviewNavigationState(iframeElement);
+
+                              previewTrack?.addEventListener("scroll", syncState, {
+                                passive: true,
+                              });
+                              previewWindow?.addEventListener("resize", syncState);
+
+                              window.setTimeout(syncState, 0);
+                            }}
+                          />
+                        ) : null}
+                        <div
+                          className={`h-full w-full ${
+                            readerEngineReady && !isPreviewVisible
+                              ? "block"
+                              : "pointer-events-none invisible absolute inset-0"
+                          }`}
+                          ref={readerViewportRef}
+                        />
+                      </div>
+                    </div>
+
+                    {readerStatus === "loading" ||
+                    (shouldRenderPreviewFrame && !readerPreviewReady && !readerEngineReady) ? (
+                      <div className="absolute inset-0 flex items-center justify-center bg-white">
+                        <div className="flex flex-col items-center px-6 py-8">
+                          <div className="relative h-[420px] w-[260px] overflow-hidden rounded-[1rem] bg-[#efefed] shadow-[0_30px_70px_rgba(17,17,17,0.14)] md:h-[520px] md:w-[320px]">
+                            {readerBookPreview?.coverUrl ? (
+                              <Image
+                                src={readerBookPreview.coverUrl}
+                                alt={`${readerBookPreview.title} cover`}
+                                fill
+                                unoptimized
+                                className="object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-full items-center justify-center">
+                                <BookOpen className="h-16 w-16 text-[#85858d]" strokeWidth={1.8} />
+                              </div>
+                            )}
+                          </div>
+                          <p className="mt-6 text-[0.95rem] font-medium tracking-[-0.02em] text-[#7a7a84]">
+                            Loading book...
+                          </p>
+                          <p className="mt-1 text-[0.8rem] font-medium tracking-[-0.01em] text-[#9c9ca5]">
+                            {formatLoadTime(readerElapsedMs)}
+                          </p>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
+    </main>
+  );
+}
