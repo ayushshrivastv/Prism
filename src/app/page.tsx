@@ -127,6 +127,62 @@ type Audiobook = {
   createdAt: string;
 };
 
+type ReaderPageContext = {
+  sessionId: string;
+  bookId: string | null;
+  bookTitle: string;
+  author: string;
+  chapterTitle: string;
+  pageIndex: number;
+  totalPages: number;
+  progress: number;
+  currentSpreadText: string;
+  previousNearbyText: string;
+  nextNearbyText: string;
+  source: "preview" | "rendition";
+  capturedAt: string;
+};
+
+type BrowserSpeechRecognitionAlternative = {
+  transcript: string;
+};
+
+type BrowserSpeechRecognitionResult = {
+  isFinal: boolean;
+  [index: number]: BrowserSpeechRecognitionAlternative;
+};
+
+type BrowserSpeechRecognitionEvent = Event & {
+  resultIndex: number;
+  results: ArrayLike<BrowserSpeechRecognitionResult>;
+};
+
+type BrowserSpeechRecognition = EventTarget & {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+  onstart: (() => void) | null;
+  onend: (() => void) | null;
+  onerror: ((event: Event) => void) | null;
+  onresult: ((event: BrowserSpeechRecognitionEvent) => void) | null;
+};
+
+type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
+
+type WindowWithSpeechRecognition = Window &
+  typeof globalThis & {
+    SpeechRecognition?: BrowserSpeechRecognitionConstructor;
+    webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
+  };
+
+type WindowWithAudioContext = Window &
+  typeof globalThis & {
+    webkitAudioContext?: typeof AudioContext;
+  };
+
 type ReaderFastPreview = {
   url: string;
   cleanupUrls: string[];
@@ -405,6 +461,91 @@ function stripSsmlBreaks(script: string) {
     .replace(/<break\s+time="[\d.]+s"\s*\/>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function normalizeReaderContextText(text: string) {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function clampReaderContextText(text: string, maxLength = 4200) {
+  const normalizedText = normalizeReaderContextText(text);
+  if (normalizedText.length <= maxLength) return normalizedText;
+
+  return `${normalizedText.slice(0, maxLength - 1).trim()}…`;
+}
+
+function getElementReaderText(element: Element | null | undefined, maxLength = 4200) {
+  if (!element) return "";
+  return clampReaderContextText(element.textContent ?? "", maxLength);
+}
+
+function getVisibleReaderTextFromDocument(readerDocument: Document, maxLength = 4200) {
+  const readerWindow = readerDocument.defaultView;
+  const readerBody = readerDocument.body;
+  if (!readerWindow || !readerBody) return getElementReaderText(readerBody, maxLength);
+
+  const viewportWidth = readerWindow.innerWidth || readerDocument.documentElement.clientWidth || 1;
+  const viewportHeight = readerWindow.innerHeight || readerDocument.documentElement.clientHeight || 1;
+  const visibleTextParts: string[] = [];
+  const walker = readerDocument.createTreeWalker(readerBody, NodeFilter.SHOW_TEXT);
+  let nextNode = walker.nextNode();
+
+  while (nextNode) {
+    const textNode = nextNode;
+    const normalizedText = normalizeReaderContextText(textNode.textContent ?? "");
+
+    if (normalizedText.length > 0) {
+      const range = readerDocument.createRange();
+      range.selectNodeContents(textNode);
+
+      const isVisible = Array.from(range.getClientRects()).some(
+        (rect) =>
+          rect.width > 0 &&
+          rect.height > 0 &&
+          rect.bottom >= 0 &&
+          rect.right >= 0 &&
+          rect.top <= viewportHeight &&
+          rect.left <= viewportWidth,
+      );
+
+      range.detach();
+
+      if (isVisible) {
+        visibleTextParts.push(normalizedText);
+      }
+    }
+
+    if (visibleTextParts.join(" ").length >= maxLength) break;
+    nextNode = walker.nextNode();
+  }
+
+  return clampReaderContextText(visibleTextParts.join(" "), maxLength);
+}
+
+function getVisibleReaderHeading(readerDocument: Document) {
+  const readerWindow = readerDocument.defaultView;
+  const headings = Array.from(readerDocument.querySelectorAll("h1, h2, h3"));
+
+  for (const heading of headings) {
+    const rect = heading.getBoundingClientRect();
+    const viewportHeight =
+      readerWindow?.innerHeight || readerDocument.documentElement.clientHeight || 1;
+    const viewportWidth =
+      readerWindow?.innerWidth || readerDocument.documentElement.clientWidth || 1;
+
+    if (
+      rect.width > 0 &&
+      rect.height > 0 &&
+      rect.bottom >= 0 &&
+      rect.right >= 0 &&
+      rect.top <= viewportHeight &&
+      rect.left <= viewportWidth
+    ) {
+      return normalizeReaderContextText(heading.textContent ?? "");
+    }
+  }
+
+  return normalizeReaderContextText(headings[0]?.textContent ?? "");
 }
 
 function loadAudiobooks() {
@@ -2324,6 +2465,9 @@ export default function HomePage() {
   const [, setReaderPreviewSpreadIndex] = useState(0);
   const [readerAssistantExpanded, setReaderAssistantExpanded] = useState(false);
   const [readerAssistantListening, setReaderAssistantListening] = useState(false);
+  const [readerAssistantIsThinking, setReaderAssistantIsThinking] = useState(false);
+  const [readerAssistantTranscript, setReaderAssistantTranscript] = useState("Say something...");
+  const [readerPageContext, setReaderPageContext] = useState<ReaderPageContext | null>(null);
   const epubInputRef = useRef<HTMLInputElement | null>(null);
   const comingSoonTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const uploadedBookDataRef = useRef<Record<string, UploadedBookData>>({});
@@ -2349,6 +2493,13 @@ export default function HomePage() {
   const readerWheelLockRef = useRef(0);
   const readerPreviewCleanupUrlsRef = useRef<string[]>([]);
   const readerPreviewSpreadIndexRef = useRef(0);
+  const readerPageContextRef = useRef<ReaderPageContext | null>(null);
+  const refreshReaderPageContextRef = useRef<(() => ReaderPageContext | null) | null>(null);
+  const readerAssistantRequestIdRef = useRef(0);
+  const readerAssistantRecognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+  const readerAssistantAudioRef = useRef<HTMLAudioElement | null>(null);
+  const readerAssistantListeningRef = useRef(false);
+  const readerAssistantQuestionDraftRef = useRef("");
   const audiobookAudioRef = useRef<HTMLAudioElement | null>(null);
   const audiobookPreparationTimersRef = useRef<number[]>([]);
   const storeBookProgressRef = useRef<Record<string, StoreBookProgress>>(
@@ -2499,6 +2650,15 @@ export default function HomePage() {
     setReaderPreviewSpreadIndex(0);
     setReaderAssistantExpanded(false);
     setReaderAssistantListening(false);
+    setReaderAssistantIsThinking(false);
+    setReaderAssistantTranscript("Say something...");
+    setReaderPageContext(null);
+    readerPageContextRef.current = null;
+    readerAssistantListeningRef.current = false;
+    readerAssistantQuestionDraftRef.current = "";
+    readerAssistantRecognitionRef.current?.abort();
+    readerAssistantAudioRef.current?.pause();
+    readerAssistantAudioRef.current = null;
     readerPreviewSpreadIndexRef.current = 0;
     setReaderStatus("idle");
   }, [destroyReaderInstance]);
@@ -2665,6 +2825,324 @@ export default function HomePage() {
     }
   }, []);
 
+  const refreshReaderPageContext = useCallback(() => {
+    const activeBookId = readerActiveBookIdRef.current;
+    const activeBook = books.find((book) => book.id === activeBookId);
+    const bookTitle = readerBookPreview?.title ?? activeBook?.title ?? "Current book";
+    const author = readerBookData?.author ?? activeBook?.author ?? "";
+    const sessionStartedAt = readerSessionStartedAtRef.current ?? getHighResolutionTime();
+    const sessionId = `${activeBookId ?? "reader"}-${Math.round(sessionStartedAt)}`;
+    let source: ReaderPageContext["source"] = "rendition";
+    let currentSpreadText = "";
+    let previousNearbyText = "";
+    let nextNearbyText = "";
+    let chapterTitle = "";
+    let pageIndex = readerSessionCurrentPageRef.current;
+    let totalPages = readerSessionTotalPagesRef.current;
+    let progress = readerSessionProgressRef.current;
+
+    if (isPreviewVisible) {
+      const previewDocument = readerFastPreviewIframeRef.current?.contentDocument;
+      const spreadIndex = readerPreviewSpreadIndexRef.current;
+      const spreads = previewDocument
+        ? Array.from(previewDocument.querySelectorAll<HTMLElement>(".prism-fast-spread"))
+        : [];
+      const currentSpread = spreads[spreadIndex];
+
+      source = "preview";
+      currentSpreadText = getElementReaderText(currentSpread);
+      previousNearbyText = getElementReaderText(spreads[spreadIndex - 1], 1200);
+      nextNearbyText = getElementReaderText(spreads[spreadIndex + 1], 1200);
+      chapterTitle = normalizeReaderContextText(
+        currentSpread?.querySelector("h1, h2, h3")?.textContent ?? "",
+      );
+      pageIndex = spreadIndex * 2 + 1;
+      totalPages = Math.max(readerPreviewLoadedPagesRef.current, readerPreviewSpreadCount * 2);
+      progress = totalPages > 0 ? Math.round((pageIndex / totalPages) * 100) : 0;
+    } else {
+      const renditionIframes = Array.from(
+        readerViewportRef.current?.querySelectorAll<HTMLIFrameElement>("iframe") ?? [],
+      );
+      const activeIframe =
+        renditionIframes.find((iframeElement) => iframeElement.contentDocument?.body?.textContent) ??
+        renditionIframes[0];
+      const activeDocument = activeIframe?.contentDocument;
+
+      if (activeDocument) {
+        currentSpreadText = getVisibleReaderTextFromDocument(activeDocument);
+        chapterTitle = getVisibleReaderHeading(activeDocument);
+        previousNearbyText = clampReaderContextText(activeDocument.body?.textContent ?? "", 1200);
+      }
+    }
+
+    if (!currentSpreadText) return null;
+
+    const nextContext: ReaderPageContext = {
+      sessionId,
+      bookId: activeBookId,
+      bookTitle,
+      author,
+      chapterTitle,
+      pageIndex,
+      totalPages,
+      progress,
+      currentSpreadText,
+      previousNearbyText,
+      nextNearbyText,
+      source,
+      capturedAt: new Date().toISOString(),
+    };
+
+    readerPageContextRef.current = nextContext;
+    setReaderPageContext(nextContext);
+    return nextContext;
+  }, [books, isPreviewVisible, readerBookData, readerBookPreview, readerPreviewSpreadCount]);
+
+  const stopReaderAssistantPlayback = useCallback(() => {
+    readerAssistantAudioRef.current?.pause();
+    readerAssistantAudioRef.current = null;
+    window.speechSynthesis?.cancel();
+  }, []);
+
+  const playReaderAssistantTone = useCallback((tone: "connect" | "disconnect") => {
+    const audioWindow = window as WindowWithAudioContext;
+    const AudioContextConstructor = audioWindow.AudioContext ?? audioWindow.webkitAudioContext;
+    if (!AudioContextConstructor) return;
+
+    const audioContext = new AudioContextConstructor();
+    const masterGain = audioContext.createGain();
+    masterGain.gain.setValueAtTime(0.0001, audioContext.currentTime);
+    masterGain.gain.exponentialRampToValueAtTime(0.08, audioContext.currentTime + 0.018);
+    masterGain.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.34);
+    masterGain.connect(audioContext.destination);
+
+    const frequencies = tone === "connect" ? [520, 760] : [620, 360];
+    frequencies.forEach((frequency, index) => {
+      const startAt = audioContext.currentTime + index * 0.095;
+      const oscillator = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(frequency, startAt);
+      oscillator.frequency.exponentialRampToValueAtTime(frequency * 1.06, startAt + 0.08);
+      gain.gain.setValueAtTime(0.0001, startAt);
+      gain.gain.exponentialRampToValueAtTime(0.9, startAt + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.14);
+
+      oscillator.connect(gain);
+      gain.connect(masterGain);
+      oscillator.start(startAt);
+      oscillator.stop(startAt + 0.16);
+    });
+
+    window.setTimeout(() => {
+      void audioContext.close().catch(() => undefined);
+    }, 520);
+  }, []);
+
+  const speakReaderAssistantAnswer = useCallback(
+    async (answer: string) => {
+      stopReaderAssistantPlayback();
+
+      try {
+        const response = await fetch("/api/elevenlabs/speech", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            text: answer,
+          }),
+        });
+        const result = (await response.json()) as {
+          audioBase64?: string;
+          configured?: boolean;
+          mimeType?: string;
+        };
+
+        if (result.audioBase64) {
+          const audio = new Audio(
+            `data:${result.mimeType ?? "audio/mpeg"};base64,${result.audioBase64}`,
+          );
+          readerAssistantAudioRef.current = audio;
+          await audio.play();
+          return;
+        }
+      } catch (error) {
+        console.error("Unable to play ElevenLabs reader answer.", error);
+      }
+
+      if (!window.speechSynthesis) return;
+
+      const utterance = new SpeechSynthesisUtterance(answer);
+      utterance.lang = "en-US";
+      utterance.rate = 0.95;
+      utterance.pitch = 1;
+      window.speechSynthesis.speak(utterance);
+    },
+    [stopReaderAssistantPlayback],
+  );
+
+  const answerReaderAssistantQuestion = useCallback(
+    async (question: string) => {
+      const trimmedQuestion = question.trim();
+      if (!trimmedQuestion) {
+        setReaderAssistantTranscript("I didn’t catch that. Tap the mic and ask again.");
+        return;
+      }
+
+      const requestId = readerAssistantRequestIdRef.current + 1;
+      readerAssistantRequestIdRef.current = requestId;
+
+      const pageContext = refreshReaderPageContext() ?? readerPageContextRef.current;
+
+      if (!pageContext) {
+        setReaderAssistantTranscript("I’m ready, but I’m still waiting for this page text.");
+        return;
+      }
+
+      setReaderAssistantIsThinking(true);
+      setReaderAssistantTranscript("Thinking about this page...");
+
+      try {
+        const response = await fetch("/api/reader/companion", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            question: trimmedQuestion,
+            context: pageContext,
+          }),
+        });
+        const result = (await response.json()) as {
+          answer?: string;
+          configured?: boolean;
+          error?: string;
+        };
+
+        if (readerAssistantRequestIdRef.current !== requestId) return;
+
+        const answer =
+          result.answer ??
+          (result.configured === false
+            ? "Page context is ready. Add your OpenAI and ElevenLabs keys to enable live voice answers."
+            : result.error ?? "I’m ready to discuss this page.");
+
+        setReaderAssistantTranscript(answer);
+        await speakReaderAssistantAnswer(answer);
+      } catch (error) {
+        console.error("Unable to answer reader companion question.", error);
+        if (readerAssistantRequestIdRef.current !== requestId) return;
+        setReaderAssistantTranscript("I have this page ready, but the companion service is offline.");
+      } finally {
+        if (readerAssistantRequestIdRef.current === requestId) {
+          setReaderAssistantIsThinking(false);
+        }
+      }
+    },
+    [refreshReaderPageContext, speakReaderAssistantAnswer],
+  );
+
+  const stopReaderAssistantListening = useCallback(() => {
+    readerAssistantListeningRef.current = false;
+    setReaderAssistantListening(false);
+    readerAssistantRecognitionRef.current?.stop();
+  }, []);
+
+  const startReaderAssistantListening = useCallback(() => {
+    playReaderAssistantTone("connect");
+    setReaderAssistantExpanded(true);
+    setReaderAssistantListening(true);
+    setReaderAssistantTranscript("Listening...");
+    readerAssistantQuestionDraftRef.current = "";
+    readerAssistantListeningRef.current = true;
+    refreshReaderPageContextRef.current?.();
+    stopReaderAssistantPlayback();
+
+    const speechWindow = window as WindowWithSpeechRecognition;
+    const SpeechRecognitionConstructor =
+      speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
+
+    if (!SpeechRecognitionConstructor) {
+      setReaderAssistantTranscript(
+        "This browser cannot transcribe speech yet. Try Chrome, then ask again.",
+      );
+      setReaderAssistantListening(false);
+      readerAssistantListeningRef.current = false;
+      return;
+    }
+
+    readerAssistantRecognitionRef.current?.abort();
+
+    const recognition = new SpeechRecognitionConstructor();
+    readerAssistantRecognitionRef.current = recognition;
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+    recognition.onstart = () => {
+      setReaderAssistantTranscript("Listening...");
+    };
+    recognition.onerror = () => {
+      setReaderAssistantListening(false);
+      readerAssistantListeningRef.current = false;
+      setReaderAssistantTranscript("I couldn’t access the mic. Check microphone permission.");
+    };
+    recognition.onresult = (event: BrowserSpeechRecognitionEvent) => {
+      let interimTranscript = "";
+      let finalTranscript = "";
+
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const result = event.results[index];
+        const transcript = result?.[0]?.transcript ?? "";
+        if (result?.isFinal) {
+          finalTranscript += transcript;
+        } else {
+          interimTranscript += transcript;
+        }
+      }
+
+      const nextTranscript = normalizeReaderContextText(finalTranscript || interimTranscript);
+      if (nextTranscript) {
+        readerAssistantQuestionDraftRef.current = nextTranscript;
+        setReaderAssistantTranscript(nextTranscript);
+      }
+
+      if (finalTranscript.trim()) {
+        recognition.stop();
+      }
+    };
+    recognition.onend = () => {
+      const finalQuestion = readerAssistantQuestionDraftRef.current.trim();
+      setReaderAssistantListening(false);
+      readerAssistantListeningRef.current = false;
+
+      if (finalQuestion) {
+        void answerReaderAssistantQuestion(finalQuestion);
+      } else if (readerAssistantTranscript === "Listening...") {
+        setReaderAssistantTranscript("I didn’t hear anything. Tap the mic and ask again.");
+      }
+    };
+
+    try {
+      recognition.start();
+    } catch (error) {
+      console.error("Unable to start speech recognition.", error);
+      setReaderAssistantListening(false);
+      readerAssistantListeningRef.current = false;
+      setReaderAssistantTranscript("I couldn’t start the mic. Try again in a moment.");
+    }
+  }, [
+    answerReaderAssistantQuestion,
+    playReaderAssistantTone,
+    readerAssistantTranscript,
+    stopReaderAssistantPlayback,
+  ]);
+
+  useEffect(() => {
+    refreshReaderPageContextRef.current = refreshReaderPageContext;
+  }, [refreshReaderPageContext]);
+
   const syncPreviewNavigationState = useCallback(
     (iframeElement?: HTMLIFrameElement | null) => {
       const previewIframe = iframeElement ?? readerFastPreviewIframeRef.current;
@@ -2697,8 +3175,12 @@ export default function HomePage() {
       setReaderPreviewSpreadIndex(currentIndex);
       setReaderAtStart(currentIndex === 0);
       setReaderAtEnd(currentIndex >= totalSpreads - 1);
+
+      window.setTimeout(() => {
+        refreshReaderPageContext();
+      }, 0);
     },
-    [],
+    [refreshReaderPageContext],
   );
 
   const goToPreviewSpread = useCallback(
@@ -2882,6 +3364,17 @@ export default function HomePage() {
     setReaderPreviewReady(false);
     setReaderPreviewSpreadCount(0);
     setReaderPreviewSpreadIndex(0);
+    setReaderAssistantExpanded(false);
+    setReaderAssistantListening(false);
+    setReaderAssistantIsThinking(false);
+    setReaderAssistantTranscript("Say something...");
+    setReaderPageContext(null);
+    readerPageContextRef.current = null;
+    readerAssistantListeningRef.current = false;
+    readerAssistantQuestionDraftRef.current = "";
+    readerAssistantRecognitionRef.current?.abort();
+    readerAssistantAudioRef.current?.pause();
+    readerAssistantAudioRef.current = null;
     readerPreviewSpreadIndexRef.current = 0;
     readerPreviewLoadedPagesRef.current = 0;
     readerActiveBookIdRef.current = book.id;
@@ -3357,6 +3850,20 @@ export default function HomePage() {
   }, [audiobooks]);
 
   useEffect(() => {
+    if (!readerPageContext) return;
+
+    void fetch("/api/reader/context", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(readerPageContext),
+    }).catch((error) => {
+      console.error("Unable to sync reader page context.", error);
+    });
+  }, [readerPageContext]);
+
+  useEffect(() => {
     return () => {
       if (comingSoonTimerRef.current) {
         clearTimeout(comingSoonTimerRef.current);
@@ -3576,10 +4083,16 @@ export default function HomePage() {
         rendition.on("relocated", (location: EpubLocation) => {
           updateReaderLocation(location);
           revealReader();
+          window.setTimeout(() => {
+            refreshReaderPageContextRef.current?.();
+          }, 0);
         });
 
         rendition.on("rendered", () => {
           revealReader();
+          window.setTimeout(() => {
+            refreshReaderPageContextRef.current?.();
+          }, 0);
         });
 
         rendition.hooks.content.register((contents: { document: Document }) => {
@@ -3591,6 +4104,17 @@ export default function HomePage() {
           contents.document.body.style.maxWidth = "100%";
           contents.document.body.style.overflowX = "hidden";
           contents.document.body.style.boxSizing = "border-box";
+
+          const closeOnEscape = (event: KeyboardEvent) => {
+            if (event.key !== "Escape") return;
+
+            event.preventDefault();
+            event.stopPropagation();
+            closeReaderOverlay();
+          };
+
+          contents.document.addEventListener("keydown", closeOnEscape, true);
+          contents.document.defaultView?.addEventListener("keydown", closeOnEscape, true);
 
           const existingStyle = contents.document.getElementById("prism-reader-fit-style");
           existingStyle?.remove();
@@ -3784,7 +4308,7 @@ export default function HomePage() {
         destroyReaderInstance();
       }
     };
-  }, [readerBookData, destroyReaderInstance]);
+  }, [readerBookData, destroyReaderInstance, closeReaderOverlay]);
 
   useEffect(() => {
     if (readerStatus === "idle") return;
@@ -4889,6 +5413,13 @@ export default function HomePage() {
                               const previewDocument = previewWindow?.document;
                               const previewTrack =
                                 previewDocument?.getElementById("prism-preview-track");
+                              const closeOnEscape = (keyboardEvent: KeyboardEvent) => {
+                                if (keyboardEvent.key !== "Escape") return;
+
+                                keyboardEvent.preventDefault();
+                                keyboardEvent.stopPropagation();
+                                closeReaderOverlay();
+                              };
 
                               setReaderPreviewReady(true);
 
@@ -4898,8 +5429,13 @@ export default function HomePage() {
                                 passive: true,
                               });
                               previewWindow?.addEventListener("resize", syncState);
+                              previewDocument?.addEventListener("keydown", closeOnEscape, true);
+                              previewWindow?.addEventListener("keydown", closeOnEscape, true);
 
-                              window.setTimeout(syncState, 0);
+                              window.setTimeout(() => {
+                                syncState();
+                                refreshReaderPageContextRef.current?.();
+                              }, 0);
                             }}
                           />
                         ) : null}
@@ -4925,10 +5461,7 @@ export default function HomePage() {
                         {!readerAssistantExpanded ? (
                           <button
                             type="button"
-                            onClick={() => {
-                              setReaderAssistantExpanded(true);
-                              setReaderAssistantListening(true);
-                            }}
+                            onClick={startReaderAssistantListening}
                             className="pointer-events-auto relative h-16 w-16 overflow-hidden rounded-full bg-white/90 shadow-[0_16px_42px_rgba(42,62,70,0.16),inset_0_0_14px_rgba(24,92,115,0.12)] backdrop-blur transition-transform hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1b88a8]/30"
                             aria-label="Open voice assistant"
                           >
@@ -4967,7 +5500,7 @@ export default function HomePage() {
                           />
                           <button
                             type="button"
-                            onClick={() => setReaderAssistantListening(true)}
+                            onClick={startReaderAssistantListening}
                             className="relative z-10 flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-[0.9rem] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1b88a8]/30"
                             aria-label="Connect voice assistant"
                           >
@@ -4975,22 +5508,36 @@ export default function HomePage() {
                               <Orb
                                 colors={["#9dd9ee", "#0c7fa6"]}
                                 seed={20260423}
-                                agentState={readerAssistantListening ? "talking" : null}
+                                agentState={
+                                  readerAssistantIsThinking
+                                    ? "thinking"
+                                    : readerAssistantListening
+                                      ? "listening"
+                                      : readerAssistantTranscript !== "Say something..."
+                                        ? "talking"
+                                      : null
+                                }
                                 className="absolute inset-[-10px]"
                               />
                             </span>
                             <span className="min-w-0 flex-1 overflow-hidden text-[0.78rem] font-medium leading-5 tracking-[-0.03em] text-[#696966] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
-                              {readerAssistantListening
-                                ? "Got it. I’m reading this page with you now, ready to explain what the narrator is trying to say or answer any question as you speak."
+                              {readerAssistantListening ||
+                              readerAssistantIsThinking ||
+                              readerAssistantTranscript !== "Say something..."
+                                ? readerAssistantTranscript
                                 : "Mic is off. Tap the mic when you want the assistant to listen."}
                             </span>
                           </button>
                           <div className="relative z-10 ml-2 flex shrink-0 items-center gap-1 text-[#78746e]">
                             <button
                               type="button"
-                              onClick={() =>
-                                setReaderAssistantListening((currentValue) => !currentValue)
-                              }
+                              onClick={() => {
+                                if (readerAssistantListening) {
+                                  stopReaderAssistantListening();
+                                } else {
+                                  startReaderAssistantListening();
+                                }
+                              }}
                               className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1b88a8]/30 ${
                                 readerAssistantListening
                                   ? "bg-[#e8f5f8] hover:bg-[#dff0f5]"
@@ -5013,8 +5560,10 @@ export default function HomePage() {
                             <button
                               type="button"
                               onClick={() => {
+                                playReaderAssistantTone("disconnect");
                                 setReaderAssistantExpanded(false);
-                                setReaderAssistantListening(false);
+                                stopReaderAssistantListening();
+                                stopReaderAssistantPlayback();
                               }}
                               className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1b88a8]/30"
                               aria-label="Close voice assistant"
