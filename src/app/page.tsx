@@ -419,6 +419,7 @@ const audiobookVoices: AudiobookVoice[] = [
     age: "Young",
     useCase: "Conversational",
     description: "The warm, real-world conversationalist for natural companion reading.",
+    previewUrl: zaraFallbackAudioUrl,
     shareUrl:
       "https://elevenlabs.io/app/voice-lab/share/7e663de001a1d60e9b44935cacaaa24720d17fa89663863165e97e6f4f37d6ee/zNe9OWjmOg3L7EgrhkJw",
   },
@@ -2424,11 +2425,13 @@ export default function HomePage() {
   const [books, setBooks] = useState<Book[]>(initialBooks);
   const [audiobooks, setAudiobooks] = useState<Audiobook[]>([]);
   const [hasRestoredAudiobooks, setHasRestoredAudiobooks] = useState(false);
+  const [hasPreparedAudiobookThisSession, setHasPreparedAudiobookThisSession] = useState(false);
   const [audiobookPromptBookId, setAudiobookPromptBookId] = useState<string | null>(null);
   const [selectedAudiobookVoiceId, setSelectedAudiobookVoiceId] = useState(
     defaultElevenLabsVoiceId,
   );
   const [speakingAudiobookId, setSpeakingAudiobookId] = useState<string | null>(null);
+  const [isZaraPreviewPlaying, setIsZaraPreviewPlaying] = useState(false);
   const [realReadingSessions, setRealReadingSessions] = useState<ReadingSession[]>([]);
   const [hasRestoredReadingSessions, setHasRestoredReadingSessions] = useState(false);
   const [openMenuBookId, setOpenMenuBookId] = useState<string | null>(null);
@@ -2490,6 +2493,8 @@ export default function HomePage() {
   const readerAssistantListeningRef = useRef(false);
   const readerAssistantQuestionDraftRef = useRef("");
   const audiobookAudioRef = useRef<HTMLAudioElement | null>(null);
+  const zaraPreviewAudioRef = useRef<HTMLAudioElement | null>(null);
+  const zaraPreviewTimerRef = useRef<number | null>(null);
   const audiobookPreparationTimersRef = useRef<number[]>([]);
   const storeBookProgressRef = useRef<Record<string, StoreBookProgress>>(
     loadStoreBookProgressRecords(),
@@ -2499,9 +2504,6 @@ export default function HomePage() {
   const uploadedBooks = books.filter((book) => book.source === "upload");
   const audiobookAvailableBooks = uploadedBooks.filter((book) => book.uploadStatus === "ready");
   const supportedAudiobookBooks = audiobookAvailableBooks.filter((book) => isStoreBookId(book.id));
-  const unsupportedAudiobookBooks = audiobookAvailableBooks.filter(
-    (book) => !isStoreBookId(book.id),
-  );
   const selectedAudiobookBook = supportedAudiobookBooks.find(
     (book) => book.id === audiobookPromptBookId,
   );
@@ -2509,6 +2511,10 @@ export default function HomePage() {
     audiobookVoices.find((voice) => voice.voiceId === selectedAudiobookVoiceId) ??
     audiobookVoices.find((voice) => voice.voiceId === defaultElevenLabsVoiceId) ??
     audiobookVoices[0];
+  const zaraAudiobookVoice =
+    audiobookVoices.find((voice) => voice.voiceId === defaultElevenLabsVoiceId) ??
+    audiobookVoices[0];
+  const visibleAudiobooks = hasPreparedAudiobookThisSession ? audiobooks : [];
   const addedBookIds = new Set(uploadedBooks.map((book) => book.id));
   const shouldRenderPreviewFrame = Boolean(readerFastPreviewUrl && !readerEngineReady);
   const isPreviewVisible = Boolean(
@@ -2553,6 +2559,17 @@ export default function HomePage() {
   const clearAudiobookPreparationTimers = useCallback(() => {
     audiobookPreparationTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
     audiobookPreparationTimersRef.current = [];
+  }, []);
+
+  const stopZaraPreview = useCallback(() => {
+    if (zaraPreviewTimerRef.current) {
+      window.clearTimeout(zaraPreviewTimerRef.current);
+      zaraPreviewTimerRef.current = null;
+    }
+
+    zaraPreviewAudioRef.current?.pause();
+    zaraPreviewAudioRef.current = null;
+    setIsZaraPreviewPlaying(false);
   }, []);
 
   const openEpubPicker = () => {
@@ -3094,7 +3111,7 @@ export default function HomePage() {
       const nextTranscript = normalizeReaderContextText(finalTranscript || interimTranscript);
       if (nextTranscript) {
         readerAssistantQuestionDraftRef.current = nextTranscript;
-        setReaderAssistantTranscript(nextTranscript);
+        setReaderAssistantTranscript("Listening...");
       }
 
       if (finalTranscript.trim()) {
@@ -3108,7 +3125,7 @@ export default function HomePage() {
 
       if (finalQuestion) {
         void answerReaderAssistantQuestion(finalQuestion);
-      } else if (readerAssistantTranscript === "Listening...") {
+      } else {
         setReaderAssistantTranscript("I didn’t hear anything. Tap the mic and ask again.");
       }
     };
@@ -3124,7 +3141,6 @@ export default function HomePage() {
   }, [
     answerReaderAssistantQuestion,
     playReaderAssistantTone,
-    readerAssistantTranscript,
     stopReaderAssistantPlayback,
   ]);
 
@@ -3510,27 +3526,17 @@ export default function HomePage() {
     }
   };
 
-  const openAudiobookVoicePicker = (bookId: string) => {
-    if (!isStoreBookId(bookId)) {
-      showComingSoon("Audiobooks for uploaded books");
-      return;
-    }
+  const createAudiobook = (bookOverride?: Book, voiceOverride?: AudiobookVoice) => {
+    const audiobookBook = bookOverride ?? selectedAudiobookBook;
+    if (!audiobookBook) return;
 
-    const existingAudiobook = audiobooks.find((audiobook) => audiobook.bookId === bookId);
-    setSelectedAudiobookVoiceId(existingAudiobook?.voiceId ?? defaultElevenLabsVoiceId);
-    setAudiobookPromptBookId(bookId);
-  };
-
-  const createAudiobook = () => {
-    if (!selectedAudiobookBook) return;
-
-    const voice = selectedAudiobookVoice;
+    const voice = voiceOverride ?? selectedAudiobookVoice;
     const nextAudiobook: Audiobook = {
-      id: `${selectedAudiobookBook.id}-${voice.voiceId}`,
-      bookId: selectedAudiobookBook.id,
-      title: selectedAudiobookBook.title,
-      author: selectedAudiobookBook.author,
-      coverUrl: selectedAudiobookBook.coverUrl,
+      id: `${audiobookBook.id}-${voice.voiceId}`,
+      bookId: audiobookBook.id,
+      title: audiobookBook.title,
+      author: audiobookBook.author,
+      coverUrl: audiobookBook.coverUrl,
       voiceId: voice.voiceId,
       voiceName: voice.name,
       status: "preparing",
@@ -3542,8 +3548,9 @@ export default function HomePage() {
 
     setAudiobooks((currentAudiobooks) => [
       nextAudiobook,
-      ...currentAudiobooks.filter((audiobook) => audiobook.bookId !== selectedAudiobookBook.id),
+      ...currentAudiobooks.filter((audiobook) => audiobook.bookId !== audiobookBook.id),
     ]);
+    setHasPreparedAudiobookThisSession(true);
     setAudiobookPromptBookId(null);
     setCurrentPage("audiobooks");
 
@@ -3571,6 +3578,50 @@ export default function HomePage() {
       );
     }, 2600);
     audiobookPreparationTimersRef.current.push(readyTimer);
+  };
+
+  const createZaraAudiobook = () => {
+    const zaraBook = supportedAudiobookBooks[0];
+    if (!zaraBook) {
+      showComingSoon("Add the Book Store title to Read first");
+      return;
+    }
+
+    createAudiobook(zaraBook, zaraAudiobookVoice);
+  };
+
+  const playZaraPreview = () => {
+    if (typeof window === "undefined") return;
+
+    if (isZaraPreviewPlaying) {
+      stopZaraPreview();
+      return;
+    }
+
+    audiobookAudioRef.current?.pause();
+    zaraPreviewAudioRef.current?.pause();
+
+    const previewAudio = new Audio(zaraFallbackAudioUrl);
+    zaraPreviewAudioRef.current = previewAudio;
+    setIsZaraPreviewPlaying(true);
+
+    const stopPreview = () => {
+      zaraPreviewAudioRef.current?.pause();
+      zaraPreviewAudioRef.current = null;
+      if (zaraPreviewTimerRef.current) {
+        window.clearTimeout(zaraPreviewTimerRef.current);
+        zaraPreviewTimerRef.current = null;
+      }
+      setIsZaraPreviewPlaying(false);
+    };
+
+    previewAudio.onended = stopPreview;
+    previewAudio.onerror = stopPreview;
+    zaraPreviewTimerRef.current = window.setTimeout(stopPreview, 3000);
+    void previewAudio.play().catch((error) => {
+      console.error("Unable to play Zara preview.", error);
+      stopPreview();
+    });
   };
 
   const playAudiobook = (audiobook: Audiobook) => {
@@ -3895,10 +3946,11 @@ export default function HomePage() {
       clearAudiobookPreparationTimers();
       audiobookAudioRef.current?.pause();
       audiobookAudioRef.current = null;
+      stopZaraPreview();
       window.speechSynthesis?.cancel();
       destroyReaderInstance();
     };
-  }, [clearAudiobookPreparationTimers, destroyReaderInstance]);
+  }, [clearAudiobookPreparationTimers, destroyReaderInstance, stopZaraPreview]);
 
   useEffect(() => {
     if (!isProfileMenuOpen) return;
@@ -4959,15 +5011,21 @@ export default function HomePage() {
               </section>
               ) : currentPage === "audiobooks" ? (
               <section className="min-h-full pt-2">
-                <div className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
+                <div
+                  className={
+                    visibleAudiobooks.length > 0
+                      ? "grid gap-5 xl:grid-cols-[0.95fr_1.05fr]"
+                      : "grid max-w-[680px] gap-5"
+                  }
+                >
                   <article className="rounded-[1.15rem] border border-[#e1e1dc] bg-[#fbfbfa] p-4">
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <p className="text-[0.86rem] font-medium tracking-[-0.02em] text-[#565656]">
-                          Available books
+                          Zara voice
                         </p>
                         <p className="mt-1 text-[0.78rem] font-medium tracking-[-0.01em] text-[#8a8a93]">
-                          Book Store titles can be prepared for audio first.
+                          Listen to a 3 second sample, then convert when you are ready.
                         </p>
                       </div>
                       <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-[#242424] shadow-[0_8px_20px_rgba(17,17,17,0.06)]">
@@ -4975,117 +5033,47 @@ export default function HomePage() {
                       </div>
                     </div>
 
-                    <div className="mt-4 space-y-3">
-                      {audiobookAvailableBooks.length > 0 ? (
-                        <>
-                        {supportedAudiobookBooks.map((book) => {
-                          const readyAudiobook = audiobooks.find(
-                            (audiobook) => audiobook.bookId === book.id,
-                          );
-                          const isPreparing = readyAudiobook?.status === "preparing";
-
-                          return (
-                            <div
-                              key={`available-audio-${book.id}`}
-                              className="flex items-center gap-3 rounded-[1rem] border border-[#e4e4df] bg-white p-3 shadow-[0_10px_26px_rgba(17,17,17,0.04)]"
-                            >
-                              <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded-[0.75rem] bg-[#efefed]">
-                                {book.coverUrl ? (
-                                  <Image
-                                    src={book.coverUrl}
-                                    alt={`${book.title} cover`}
-                                    fill
-                                    unoptimized
-                                    className="object-cover"
-                                  />
-                                ) : (
-                                  <div className="flex h-full items-center justify-center">
-                                    <BookOpen className="h-5 w-5 text-[#85858d]" strokeWidth={1.8} />
-                                  </div>
-                                )}
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <p className="truncate text-[0.9rem] font-medium tracking-[-0.025em] text-[#2b2b30]">
-                                  {book.title}
-                                </p>
-                                <p className="mt-1 truncate text-[0.76rem] font-medium tracking-[-0.01em] text-[#8a8a93]">
-                                  {isPreparing
-                                    ? `Preparing in ${readyAudiobook.voiceName}...`
-                                    : readyAudiobook
-                                    ? `Ready in ${readyAudiobook.voiceName}`
-                                    : book.author}
-                                </p>
-                                {isPreparing ? (
-                                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#ececea]">
-                                    <div
-                                      className="h-full rounded-full bg-[#191919] transition-all duration-300"
-                                      style={{ width: `${readyAudiobook.progress}%` }}
-                                    />
-                                  </div>
-                                ) : null}
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => openAudiobookVoicePicker(book.id)}
-                                disabled={isPreparing}
-                                className="min-h-10 rounded-[0.85rem] bg-[#191919] px-3 text-[0.78rem] font-medium tracking-[-0.02em] text-white transition-colors hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/15 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                {isPreparing ? "Preparing" : readyAudiobook ? "Change voice" : "Convert"}
-                              </button>
-                            </div>
-                          );
-                        })}
-                        {unsupportedAudiobookBooks.map((book) => (
-                          <div
-                            key={`audio-coming-soon-${book.id}`}
-                            className="flex items-center gap-3 rounded-[1rem] border border-dashed border-[#e4e4df] bg-white/70 p-3"
-                          >
-                            <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded-[0.75rem] bg-[#efefed] opacity-70">
-                              {book.coverUrl ? (
-                                <Image
-                                  src={book.coverUrl}
-                                  alt={`${book.title} cover`}
-                                  fill
-                                  unoptimized
-                                  className="object-cover"
-                                />
-                              ) : (
-                                <div className="flex h-full items-center justify-center">
-                                  <BookOpen className="h-5 w-5 text-[#85858d]" strokeWidth={1.8} />
-                                </div>
-                              )}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-[0.9rem] font-medium tracking-[-0.025em] text-[#2b2b30]">
-                                {book.title}
-                              </p>
-                              <p className="mt-1 truncate text-[0.76rem] font-medium tracking-[-0.01em] text-[#8a8a93]">
-                                Audiobook conversion for uploaded books is coming soon.
-                              </p>
-                            </div>
-                            <span className="rounded-full bg-[#f1f0ed] px-3 py-1 text-[0.74rem] font-medium tracking-[-0.01em] text-[#77777f]">
-                              Coming soon
-                            </span>
-                          </div>
-                        ))}
-                        </>
-                      ) : (
-                        <div className="rounded-[1rem] border border-dashed border-[#deded8] bg-white px-4 py-8 text-center">
-                          <Headphones
-                            className="mx-auto h-8 w-8 text-[#8a8a93]"
-                            strokeWidth={1.7}
-                          />
-                          <p className="mt-3 text-[0.9rem] font-medium tracking-[-0.02em] text-[#34343a]">
-                            No readable books yet
+                    <div className="mt-4 rounded-[1rem] border border-[#e4e4df] bg-white p-4 shadow-[0_10px_26px_rgba(17,17,17,0.04)]">
+                      <div className="flex items-start gap-3">
+                        <div className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#dce8f8]">
+                          <div className="absolute inset-0 bg-[conic-gradient(from_22deg,#356da9,#d7e7fb,#5b8fca,#eef5ff,#356da9)] opacity-90" />
+                          <div className="absolute h-6 w-6 rounded-full bg-white/45 blur-sm" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[0.96rem] font-medium tracking-[-0.03em] text-[#202024]">
+                            {zaraAudiobookVoice.name}
                           </p>
-                          <p className="mt-1 text-[0.78rem] font-medium tracking-[-0.01em] text-[#8a8a93]">
-                            Add the Book Store title to Read first.
+                          <p className="mt-1 text-[0.78rem] font-medium tracking-[-0.01em] text-[#7f7f86]">
+                            {zaraAudiobookVoice.accent} - {zaraAudiobookVoice.gender} -{" "}
+                            {zaraAudiobookVoice.age}
+                          </p>
+                          <p className="mt-1 text-[0.76rem] leading-5 tracking-[-0.01em] text-[#8a8a93]">
+                            {zaraAudiobookVoice.description}
                           </p>
                         </div>
-                      )}
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap items-center gap-2.5">
+                        <button
+                          type="button"
+                          onClick={playZaraPreview}
+                          className="inline-flex min-h-10 items-center gap-1.5 rounded-[0.85rem] border border-[#deded8] bg-white px-3 text-[0.78rem] font-medium tracking-[-0.02em] text-[#34343a] transition-colors hover:bg-[#f7f7f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/15 focus-visible:ring-offset-2"
+                        >
+                          <Volume2 className="h-4 w-4" strokeWidth={1.9} />
+                          {isZaraPreviewPlaying ? "Playing sample" : "Play 3s sample"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={createZaraAudiobook}
+                          className="min-h-10 rounded-[0.85rem] bg-[#191919] px-4 text-[0.78rem] font-medium tracking-[-0.02em] text-white transition-colors hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/15 focus-visible:ring-offset-2"
+                        >
+                          Convert
+                        </button>
+                      </div>
                     </div>
                   </article>
 
+                  {visibleAudiobooks.length > 0 ? (
                   <article className="rounded-[1.15rem] border border-[#e1e1dc] bg-white p-4 shadow-[0_16px_40px_rgba(17,17,17,0.05)]">
                     <div className="flex items-start justify-between gap-4">
                       <div>
@@ -5097,13 +5085,12 @@ export default function HomePage() {
                         </p>
                       </div>
                       <div className="rounded-full bg-[#f1f0ed] px-3 py-1 text-[0.76rem] font-medium tracking-[-0.01em] text-[#757575]">
-                        {audiobooks.filter((audiobook) => audiobook.status === "ready").length} ready
+                        {visibleAudiobooks.filter((audiobook) => audiobook.status === "ready").length} ready
                       </div>
                     </div>
 
                     <div className="mt-4 space-y-3">
-                      {audiobooks.length > 0 ? (
-                        audiobooks.map((audiobook) => (
+                      {visibleAudiobooks.map((audiobook) => (
                           <div
                             key={audiobook.id}
                             className="flex items-center gap-3 rounded-[1rem] border border-[#e4e4df] bg-[#fbfbfa] p-3"
@@ -5143,20 +5130,10 @@ export default function HomePage() {
                               </span>
                             )}
                           </div>
-                        ))
-                      ) : (
-                        <div className="rounded-[1rem] border border-dashed border-[#deded8] bg-[#fbfbfa] px-4 py-8 text-center">
-                          <Mic2 className="mx-auto h-8 w-8 text-[#8a8a93]" strokeWidth={1.7} />
-                          <p className="mt-3 text-[0.9rem] font-medium tracking-[-0.02em] text-[#34343a]">
-                            No audiobooks ready
-                          </p>
-                          <p className="mt-1 text-[0.78rem] font-medium tracking-[-0.01em] text-[#8a8a93]">
-                            Convert a book and it will appear here.
-                          </p>
-                        </div>
-                      )}
+                        ))}
                     </div>
                   </article>
+                  ) : null}
                 </div>
               </section>
               ) : (
@@ -5353,7 +5330,7 @@ export default function HomePage() {
               </button>
               <button
                 type="button"
-                onClick={createAudiobook}
+                onClick={() => createAudiobook()}
                 className="rounded-[0.85rem] bg-[#191919] px-4 py-2 text-[0.84rem] font-medium tracking-[-0.02em] text-white transition-colors hover:bg-black"
               >
                 Prepare audiobook
