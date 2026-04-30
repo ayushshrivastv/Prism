@@ -306,10 +306,10 @@ const updates = [
     icon: ImageIcon,
   },
   {
-    title: "Built with Kiro IDE",
+    title: "Built with Zed IDE",
     time: "8 days ago",
     description:
-      "Prism is now being shaped with Kiro IDE, helping us move faster on reading workflows, UI polish, and book-first improvements.",
+      "Prism is now being shaped with Zed IDE, helping us move faster on reading workflows, UI polish, and book-first improvements.",
     icon: Bot,
   },
 ];
