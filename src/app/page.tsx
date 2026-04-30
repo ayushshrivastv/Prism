@@ -370,39 +370,67 @@ function normalizeProgressBars(values: number[]) {
   return values.map((value) => Math.max(14, Math.round((value / maxBucketValue) * 100)));
 }
 
-function buildTimelineChart(values: number[]) {
+function buildTimelineChart(
+  range: (typeof timeRanges)[number],
+  values: number[],
+) {
   const width = 1120;
   const height = 100;
   const baselineY = 78;
   const paddingX = 20;
-  const maxRise = 52;
-  const clampedValues = values.length > 0 ? values : [0];
+  const maxRise = 56;
   const innerWidth = width - paddingX * 2;
-  const step = clampedValues.length > 1 ? innerWidth / (clampedValues.length - 1) : 0;
+  const sampleCount = 15;
+  const step = innerWidth / (sampleCount - 1);
+  const rangeColors: Record<(typeof timeRanges)[number], string> = {
+    "24h": "#d43c79",
+    "7d": "#d43c79",
+    "30d": "#e36c2d",
+    "90d": "#b9b9b9",
+  };
+  const selectedValues: Record<(typeof timeRanges)[number], number[]> = {
+    "24h": values,
+    "7d": values,
+    "30d": values,
+    "90d": Array.from({ length: sampleCount }, () => 0),
+  };
+  const padValues = (sourceValues: number[]) =>
+    Array.from({ length: sampleCount }, (_, index) => sourceValues[index] ?? 0);
 
-  const points = clampedValues.map((value, index) => {
-    const normalizedValue = Math.max(0, Math.min(100, value));
-    return {
-      x: paddingX + index * step,
-      y: baselineY - (normalizedValue / 100) * maxRise,
-    };
-  });
+  const buildPoints = (sourceValues: number[]) =>
+    padValues(sourceValues).map((value, index) => {
+      const normalizedValue = Math.max(0, Math.min(100, value));
+      return {
+        x: paddingX + index * step,
+        y: baselineY - (normalizedValue / 100) * maxRise,
+      };
+    });
 
-  const linePath = points
-    .map((point, index) =>
-      `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`,
-    )
-    .join(" ");
-  const lastPoint = points[points.length - 1] ?? { x: width - paddingX, y: baselineY };
-  const areaPath = `${linePath} L ${lastPoint.x.toFixed(2)} ${baselineY} L ${points[0]?.x.toFixed(2) ?? paddingX} ${baselineY} Z`;
+  const points = buildPoints(selectedValues[range]);
+  const buildPath = (sourcePoints: Array<{ x: number; y: number }>) =>
+    sourcePoints.reduce((path, point, index) => {
+      if (index === 0) {
+        return `M ${point.x.toFixed(2)} ${point.y.toFixed(2)}`;
+      }
+
+      const previousPoint = sourcePoints[index - 1];
+      const controlX = previousPoint.x + (point.x - previousPoint.x) / 2;
+      return `${path} C ${controlX.toFixed(2)} ${previousPoint.y.toFixed(2)} ${controlX.toFixed(2)} ${point.y.toFixed(2)} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`;
+    }, "");
+  const linePath = buildPath(points);
+  const lastPoint = points[points.length - 1] ?? {
+    x: width - paddingX,
+    y: baselineY,
+  };
+  const color = rangeColors[range];
 
   return {
     width,
     height,
     baselineY,
     linePath,
-    areaPath,
     lastPoint,
+    color,
   };
 }
 
@@ -2067,7 +2095,9 @@ function GoogleIcon() {
 
 export default function HomePage() {
   const [currentPage, setCurrentPage] = useState<PageView>("home");
-  const [authStatus, setAuthStatus] = useState<AuthViewState>("loading");
+  const [authStatus, setAuthStatus] = useState<AuthViewState>(
+    firebaseAuth ? "loading" : "unauthenticated",
+  );
   const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
   const [authActionError, setAuthActionError] = useState<string | null>(null);
   const [isSigningIn, setIsSigningIn] = useState(false);
@@ -2170,7 +2200,7 @@ export default function HomePage() {
     100,
     Math.round((activeProgress.minutes / activeProgress.goal) * 100),
   );
-  const timelineChart = buildTimelineChart(activeProgress.bars);
+  const timelineChart = buildTimelineChart(selectedRange, activeProgress.bars);
 
   const showComingSoon = (label: string) => {
     setComingSoonLabel(label);
@@ -2272,6 +2302,12 @@ export default function HomePage() {
 
   const handleGoogleSignIn = useCallback(async () => {
     setAuthActionError(null);
+
+    if (!firebaseAuth) {
+      setAuthActionError("Firebase sign-in is not configured for this environment.");
+      return;
+    }
+
     setIsSigningIn(true);
 
     try {
@@ -2321,7 +2357,9 @@ export default function HomePage() {
     setIsSigningOut(true);
 
     try {
-      await signOut(firebaseAuth);
+      if (firebaseAuth) {
+        await signOut(firebaseAuth);
+      }
     } catch (error) {
       console.error("Unable to sign out.", error);
     } finally {
@@ -2816,6 +2854,10 @@ export default function HomePage() {
 
   useEffect(() => {
     void loadFirebaseAnalytics();
+
+    if (!firebaseAuth) {
+      return undefined;
+    }
 
     const unsubscribe = onAuthStateChanged(firebaseAuth, (nextUser) => {
       setAuthUser(nextUser);
@@ -3784,18 +3826,13 @@ export default function HomePage() {
                   >
                     <path
                       d={`M20 ${timelineChart.baselineY}H1100`}
-                      stroke="#ebe7f6"
+                      stroke={timelineChart.color}
                       strokeWidth="4"
                       strokeLinecap="round"
                     />
                     <path
-                      d={timelineChart.areaPath}
-                      fill="url(#prism-session-timeline-fill)"
-                      opacity="0.95"
-                    />
-                    <path
                       d={timelineChart.linePath}
-                      stroke="#7f56d9"
+                      stroke={timelineChart.color}
                       strokeWidth="4"
                       strokeLinecap="round"
                       strokeLinejoin="round"
@@ -3805,15 +3842,9 @@ export default function HomePage() {
                       cy={timelineChart.lastPoint.y}
                       r="9"
                       fill="white"
-                      stroke="#7f56d9"
+                      stroke={timelineChart.color}
                       strokeWidth="4"
                     />
-                    <defs>
-                      <linearGradient id="prism-session-timeline-fill" x1="0" y1="20" x2="0" y2="92">
-                        <stop offset="0%" stopColor="#c9b6f5" stopOpacity="0.4" />
-                        <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
-                      </linearGradient>
-                    </defs>
                   </svg>
                 </article>
               </section>
