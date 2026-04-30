@@ -2393,10 +2393,33 @@ export default function HomePage() {
 
       if (authError.code === "auth/unauthorized-domain") {
         setAuthActionError(
-          "Add this local domain to Firebase Authentication authorized domains, then try again.",
+          "Add this Vercel domain to Firebase Authentication authorized domains, then try again.",
+        );
+      } else if (
+        authError.code === "auth/api-key-not-valid" ||
+        authError.code === "auth/invalid-api-key"
+      ) {
+        setAuthActionError(
+          "Firebase API key is invalid. Check NEXT_PUBLIC_FIREBASE_API_KEY in Vercel.",
+        );
+      } else if (authError.code === "auth/configuration-not-found") {
+        setAuthActionError(
+          "Google sign-in is not enabled for this Firebase project. Enable Google provider in Firebase Authentication.",
+        );
+      } else if (authError.code === "auth/operation-not-allowed") {
+        setAuthActionError(
+          "Google sign-in is disabled in Firebase Authentication. Enable the Google provider and try again.",
+        );
+      } else if (authError.code === "auth/network-request-failed") {
+        setAuthActionError(
+          "Firebase could not be reached from this deployment. Check the Vercel domain and network settings.",
         );
       } else {
-        setAuthActionError("Unable to sign in with Google right now.");
+        setAuthActionError(
+          authError.code
+            ? `Google sign-in failed: ${authError.code}.`
+            : "Unable to sign in with Google right now.",
+        );
       }
 
       console.error("Unable to sign in with Google.", error);
