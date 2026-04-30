@@ -28,6 +28,7 @@ import {
   BookOpenText,
   ChevronLeft,
   ChevronRight,
+  Check,
   Ellipsis,
   Files,
   Headphones,
@@ -35,8 +36,12 @@ import {
   ImageIcon,
   LoaderCircle,
   LogOut,
+  Mic2,
   Plus,
+  Volume2,
+  WandSparkles,
   Store,
+  X,
 } from "lucide-react";
 
 import {
@@ -44,6 +49,7 @@ import {
   googleAuthProvider,
   loadFirebaseAnalytics,
 } from "@/lib/firebase";
+import { Orb } from "@/components/ui/orb";
 
 const libraryItems = [
   { label: "Read", icon: BookOpenText },
@@ -94,6 +100,33 @@ type StoreBookProgress = {
   status: "reading" | "finished";
 };
 
+type AudiobookVoice = {
+  voiceId: string;
+  name: string;
+  accent: string;
+  gender: string;
+  age: string;
+  useCase: string;
+  description: string;
+  previewUrl?: string;
+  shareUrl?: string;
+};
+
+type Audiobook = {
+  id: string;
+  bookId: string;
+  title: string;
+  author: string;
+  coverUrl?: string | null;
+  voiceId: string;
+  voiceName: string;
+  status: "preparing" | "ready";
+  progress: number;
+  script: string;
+  audioUrl: string;
+  createdAt: string;
+};
+
 type ReaderFastPreview = {
   url: string;
   cleanupUrls: string[];
@@ -130,6 +163,7 @@ type StoreBookMetadata = {
 const UPLOADED_BOOK_SUMMARIES_KEY = "prism-uploaded-book-summaries-v1";
 const STORE_BOOK_PROGRESS_KEY = "prism-store-book-progress-v1";
 const STORE_BOOK_READING_LIST_KEY = "prism-store-book-reading-list-v1";
+const AUDIOBOOKS_KEY = "prism-audiobooks-v1";
 const READING_SESSIONS_KEY = "prism-reading-sessions-v1";
 const LIBRARY_DB_NAME = "prism-library";
 const LIBRARY_DB_VERSION = 1;
@@ -254,7 +288,7 @@ const readerExitHintPositions = [
   },
 ] as const;
 
-type PageView = "home" | "read" | "store";
+type PageView = "home" | "read" | "audiobooks" | "store";
 
 const storeBooks = [
   {
@@ -315,6 +349,87 @@ function saveStoreBookReadingListIds(bookIds: Set<string>) {
   if (typeof window === "undefined") return;
 
   window.localStorage.setItem(STORE_BOOK_READING_LIST_KEY, JSON.stringify(Array.from(bookIds)));
+}
+
+const defaultElevenLabsVoiceId = "jqcCZkN6Knx8BJ5TBdYR";
+const zaraFallbackAudioUrl = "/audio/zara-warm-real-world-conversationalist.mp3";
+
+const audiobookVoices: AudiobookVoice[] = [
+  {
+    voiceId: defaultElevenLabsVoiceId,
+    name: "Zara",
+    accent: "american",
+    gender: "Female",
+    age: "Young",
+    useCase: "Conversational",
+    description: "The warm, real-world conversationalist for natural companion reading.",
+    shareUrl:
+      "https://elevenlabs.io/app/voice-lab/share/7e663de001a1d60e9b44935cacaaa24720d17fa89663863165e97e6f4f37d6ee/zNe9OWjmOg3L7EgrhkJw",
+  },
+  {
+    voiceId: "21m00Tcm4TlvDq8ikWAM",
+    name: "Rachel",
+    accent: "american",
+    gender: "Female",
+    age: "Young",
+    useCase: "Conversational",
+    description: "Matter-of-fact and personable for calm companion narration.",
+    previewUrl:
+      "https://storage.googleapis.com/eleven-public-prod/premade/voices/21m00Tcm4TlvDq8ikWAM/b4928a68-c03b-411f-8533-3d5c299fd451.mp3",
+  },
+  {
+    voiceId: "29vD33N1CtxCmqQRPOHJ",
+    name: "Drew",
+    accent: "american",
+    gender: "Male",
+    age: "Middle aged",
+    useCase: "News",
+    description: "Steady and well-rounded for clear audiobook delivery.",
+    previewUrl:
+      "https://storage.googleapis.com/eleven-public-prod/premade/voices/29vD33N1CtxCmqQRPOHJ/b99fc51d-12d3-4312-b480-a8a45a7d51ef.mp3",
+  },
+];
+
+const makeSomethingWonderfulAudiobookScript = `The best way to understand a person is to listen to that person directly. <break time="0.5s"/> And the best way to understand Steve is to listen to what he said and wrote over the course of his life. <break time="0.5s"/> His words—in speeches, interviews, and emails—offer a window into how he thought. <break time="0.5s"/> And he was an exquisite thinker.
+<break time="1s"/>
+Much of what's in these pages reflects guiding themes of Steve's life: <break time="0.5s"/> his sense of the worlds that would emerge from marrying the arts and technology; <break time="0.3s"/> his unbelievable rigor, which he imposed first and most strenuously on himself; <break time="0.3s"/> his tenacity in pursuit of assembling and leading great teams; <break time="0.3s"/> and perhaps, above all, his insights into what it means to be human.
+<break time="1s"/>
+Steve once told a group of students, <break time="0.5s"/> "You appear, have a chance to blaze in the sky, then you disappear." <break time="1s"/> He gave an extraordinary amount of thought to how best to use our fleeting time. <break time="0.5s"/> He was compelled by the notion of being part of the arc of human existence, <break time="0.3s"/> animated by the thought that he—or that any of us—might elevate or expedite human progress.
+<break time="1s"/>
+It is hard enough to see what is already there, <break time="0.5s"/> to gain a clear view. <break time="0.5s"/> Steve's gift was greater still: <break time="0.5s"/> he saw clearly what was not there, <break time="0.3s"/> what could be there, <break time="0.3s"/> what had to be there. <break time="0.5s"/> His mind was never a captive of reality. <break time="0.5s"/> Quite the contrary: <break time="0.3s"/> he imagined what reality lacked and set out to remedy it. <break time="0.5s"/> His ideas were not arguments, but intuitions, <break time="0.3s"/> born of a true inner freedom and an epic sense of possibility.
+<break time="1s"/>
+In these pages, Steve drafts and refines. <break time="0.5s"/> He stumbles, grows, and changes. <break time="0.5s"/> But always, always, <break time="0.5s"/> he retains that sense of possibility. <break time="0.7s"/> I hope these selections ignite in you the understanding that drove him: <break time="0.5s"/> that everything that makes up what we call life was made by people no smarter, no more capable, than we are; <break time="0.5s"/> that our world is not fixed— <break time="0.3s"/> and so we can change it for the better."`;
+
+function stripSsmlBreaks(script: string) {
+  return script
+    .replace(/<break\s+time="[\d.]+s"\s*\/>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function loadAudiobooks() {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const storedAudiobooks = window.localStorage.getItem(AUDIOBOOKS_KEY);
+    if (!storedAudiobooks) return [];
+
+    const parsedAudiobooks = JSON.parse(storedAudiobooks) as Audiobook[];
+    return Array.isArray(parsedAudiobooks)
+      ? parsedAudiobooks
+          .filter((audiobook) => isStoreBookId(audiobook.bookId))
+          .map((audiobook) => ({
+            ...audiobook,
+            status: audiobook.status ?? "ready",
+            progress: audiobook.progress ?? 100,
+            script: audiobook.script ?? makeSomethingWonderfulAudiobookScript,
+            audioUrl: audiobook.audioUrl ?? zaraFallbackAudioUrl,
+          }))
+      : [];
+  } catch (error) {
+    console.error("Unable to parse stored audiobooks.", error);
+    return [];
+  }
 }
 
 const dashboardNow = new Date("2026-04-23T01:30:00+05:30");
@@ -2166,6 +2281,12 @@ export default function HomePage() {
     useState<(typeof timeRanges)[number]>("24h");
   const [comingSoonLabel, setComingSoonLabel] = useState<string | null>(null);
   const [books, setBooks] = useState<Book[]>(initialBooks);
+  const [audiobooks, setAudiobooks] = useState<Audiobook[]>(loadAudiobooks);
+  const [audiobookPromptBookId, setAudiobookPromptBookId] = useState<string | null>(null);
+  const [selectedAudiobookVoiceId, setSelectedAudiobookVoiceId] = useState(
+    defaultElevenLabsVoiceId,
+  );
+  const [speakingAudiobookId, setSpeakingAudiobookId] = useState<string | null>(null);
   const [realReadingSessions, setRealReadingSessions] = useState<ReadingSession[]>(() => {
     if (typeof window === "undefined") return [];
 
@@ -2201,6 +2322,8 @@ export default function HomePage() {
   const [readerPreviewReady, setReaderPreviewReady] = useState(false);
   const [readerPreviewSpreadCount, setReaderPreviewSpreadCount] = useState(0);
   const [, setReaderPreviewSpreadIndex] = useState(0);
+  const [readerAssistantExpanded, setReaderAssistantExpanded] = useState(false);
+  const [readerAssistantListening, setReaderAssistantListening] = useState(false);
   const epubInputRef = useRef<HTMLInputElement | null>(null);
   const comingSoonTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const uploadedBookDataRef = useRef<Record<string, UploadedBookData>>({});
@@ -2226,12 +2349,26 @@ export default function HomePage() {
   const readerWheelLockRef = useRef(0);
   const readerPreviewCleanupUrlsRef = useRef<string[]>([]);
   const readerPreviewSpreadIndexRef = useRef(0);
+  const audiobookAudioRef = useRef<HTMLAudioElement | null>(null);
+  const audiobookPreparationTimersRef = useRef<number[]>([]);
   const storeBookProgressRef = useRef<Record<string, StoreBookProgress>>(
     loadStoreBookProgressRecords(),
   );
   const storeBookReadingListRef = useRef<Set<string>>(loadStoreBookReadingListIds());
   const activeProgress = buildReadingProgress(selectedRange, books, realReadingSessions);
   const uploadedBooks = books.filter((book) => book.source === "upload");
+  const audiobookAvailableBooks = uploadedBooks.filter((book) => book.uploadStatus === "ready");
+  const supportedAudiobookBooks = audiobookAvailableBooks.filter((book) => isStoreBookId(book.id));
+  const unsupportedAudiobookBooks = audiobookAvailableBooks.filter(
+    (book) => !isStoreBookId(book.id),
+  );
+  const selectedAudiobookBook = supportedAudiobookBooks.find(
+    (book) => book.id === audiobookPromptBookId,
+  );
+  const selectedAudiobookVoice =
+    audiobookVoices.find((voice) => voice.voiceId === selectedAudiobookVoiceId) ??
+    audiobookVoices.find((voice) => voice.voiceId === defaultElevenLabsVoiceId) ??
+    audiobookVoices[0];
   const addedBookIds = new Set(uploadedBooks.map((book) => book.id));
   const shouldRenderPreviewFrame = Boolean(readerFastPreviewUrl && !readerEngineReady);
   const isPreviewVisible = Boolean(
@@ -2272,6 +2409,11 @@ export default function HomePage() {
       setComingSoonLabel(null);
     }, 1600);
   };
+
+  const clearAudiobookPreparationTimers = useCallback(() => {
+    audiobookPreparationTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
+    audiobookPreparationTimersRef.current = [];
+  }, []);
 
   const openEpubPicker = () => {
     epubInputRef.current?.click();
@@ -2355,6 +2497,8 @@ export default function HomePage() {
     setReaderPreviewReady(false);
     setReaderPreviewSpreadCount(0);
     setReaderPreviewSpreadIndex(0);
+    setReaderAssistantExpanded(false);
+    setReaderAssistantListening(false);
     readerPreviewSpreadIndexRef.current = 0;
     setReaderStatus("idle");
   }, [destroyReaderInstance]);
@@ -2884,6 +3028,105 @@ export default function HomePage() {
     }
   };
 
+  const openAudiobookVoicePicker = (bookId: string) => {
+    if (!isStoreBookId(bookId)) {
+      showComingSoon("Audiobooks for uploaded books");
+      return;
+    }
+
+    const existingAudiobook = audiobooks.find((audiobook) => audiobook.bookId === bookId);
+    setSelectedAudiobookVoiceId(existingAudiobook?.voiceId ?? defaultElevenLabsVoiceId);
+    setAudiobookPromptBookId(bookId);
+  };
+
+  const createAudiobook = () => {
+    if (!selectedAudiobookBook) return;
+
+    const voice = selectedAudiobookVoice;
+    const nextAudiobook: Audiobook = {
+      id: `${selectedAudiobookBook.id}-${voice.voiceId}`,
+      bookId: selectedAudiobookBook.id,
+      title: selectedAudiobookBook.title,
+      author: selectedAudiobookBook.author,
+      coverUrl: selectedAudiobookBook.coverUrl,
+      voiceId: voice.voiceId,
+      voiceName: voice.name,
+      status: "preparing",
+      progress: 8,
+      script: makeSomethingWonderfulAudiobookScript,
+      audioUrl: zaraFallbackAudioUrl,
+      createdAt: new Date().toISOString(),
+    };
+
+    setAudiobooks((currentAudiobooks) => [
+      nextAudiobook,
+      ...currentAudiobooks.filter((audiobook) => audiobook.bookId !== selectedAudiobookBook.id),
+    ]);
+    setAudiobookPromptBookId(null);
+    setCurrentPage("audiobooks");
+
+    let nextProgress = 8;
+    const progressTimer = window.setInterval(() => {
+      nextProgress = Math.min(96, nextProgress + 14);
+      setAudiobooks((currentAudiobooks) =>
+        currentAudiobooks.map((audiobook) =>
+          audiobook.id === nextAudiobook.id
+            ? { ...audiobook, progress: nextProgress }
+            : audiobook,
+        ),
+      );
+    }, 360);
+    audiobookPreparationTimersRef.current.push(progressTimer);
+
+    const readyTimer = window.setTimeout(() => {
+      window.clearInterval(progressTimer);
+      setAudiobooks((currentAudiobooks) =>
+        currentAudiobooks.map((audiobook) =>
+          audiobook.id === nextAudiobook.id
+            ? { ...audiobook, status: "ready", progress: 100 }
+            : audiobook,
+        ),
+      );
+    }, 2600);
+    audiobookPreparationTimersRef.current.push(readyTimer);
+  };
+
+  const playAudiobook = (audiobook: Audiobook) => {
+    if (typeof window === "undefined") return;
+
+    audiobookAudioRef.current?.pause();
+    audiobookAudioRef.current = null;
+    window.speechSynthesis?.cancel();
+
+    if (speakingAudiobookId === audiobook.id) {
+      setSpeakingAudiobookId(null);
+      return;
+    }
+
+    if (audiobook.audioUrl) {
+      const audio = new Audio(audiobook.audioUrl);
+      audiobookAudioRef.current = audio;
+      audio.onended = () => setSpeakingAudiobookId(null);
+      audio.onerror = () => setSpeakingAudiobookId(null);
+      setSpeakingAudiobookId(audiobook.id);
+      void audio.play().catch((error) => {
+        console.error("Unable to play audiobook fallback audio.", error);
+        setSpeakingAudiobookId(null);
+      });
+      return;
+    }
+
+    if (!window.speechSynthesis) return;
+    const utterance = new SpeechSynthesisUtterance(stripSsmlBreaks(audiobook.script));
+    utterance.lang = "en-US";
+    utterance.rate = 0.92;
+    utterance.pitch = 1;
+    utterance.onend = () => setSpeakingAudiobookId(null);
+    utterance.onerror = () => setSpeakingAudiobookId(null);
+    setSpeakingAudiobookId(audiobook.id);
+    window.speechSynthesis.speak(utterance);
+  };
+
   const handleEpubSelect = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -3110,13 +3353,21 @@ export default function HomePage() {
   }, [realReadingSessions]);
 
   useEffect(() => {
+    window.localStorage.setItem(AUDIOBOOKS_KEY, JSON.stringify(audiobooks));
+  }, [audiobooks]);
+
+  useEffect(() => {
     return () => {
       if (comingSoonTimerRef.current) {
         clearTimeout(comingSoonTimerRef.current);
       }
+      clearAudiobookPreparationTimers();
+      audiobookAudioRef.current?.pause();
+      audiobookAudioRef.current = null;
+      window.speechSynthesis?.cancel();
       destroyReaderInstance();
     };
-  }, [destroyReaderInstance]);
+  }, [clearAudiobookPreparationTimers, destroyReaderInstance]);
 
   useEffect(() => {
     if (!isProfileMenuOpen) return;
@@ -3635,12 +3886,15 @@ export default function HomePage() {
                       label={label}
                       icon={icon}
                       active={
-                        currentPage === "read" && label === "Read"
+                        (currentPage === "read" && label === "Read") ||
+                        (currentPage === "audiobooks" && label === "Audiobooks")
                       }
                       onClick={
                         label === "Read"
                           ? () => setCurrentPage("read")
-                          : () => showComingSoon(label)
+                          : label === "Audiobooks"
+                            ? () => setCurrentPage("audiobooks")
+                            : () => showComingSoon(label)
                       }
                       badge={comingSoonLabel === label ? "Coming soon" : null}
                     />
@@ -3810,6 +4064,10 @@ export default function HomePage() {
                     <h2 className="text-[1.72rem] font-semibold tracking-[-0.065em] text-[#171717]">
                       Books Store
                     </h2>
+                  ) : currentPage === "audiobooks" ? (
+                    <h2 className="text-[1.72rem] font-semibold tracking-[-0.065em] text-[#171717]">
+                      Audiobooks
+                    </h2>
                   ) : (
                     <div />
                   )}
@@ -3844,6 +4102,10 @@ export default function HomePage() {
                 ) : currentPage === "store" ? (
                   <p className="mt-1.5 text-[0.9rem] font-medium tracking-[-0.02em] text-[#7c7c84]">
                     Add curated books to your reading list.
+                  </p>
+                ) : currentPage === "audiobooks" ? (
+                  <p className="mt-1.5 text-[0.9rem] font-medium tracking-[-0.02em] text-[#7c7c84]">
+                    Convert your reading list into companion-ready narration.
                   </p>
                 ) : null}
               </div>
@@ -4147,6 +4409,208 @@ export default function HomePage() {
                     ))}
                   </div>
               </section>
+              ) : currentPage === "audiobooks" ? (
+              <section className="min-h-full pt-2">
+                <div className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
+                  <article className="rounded-[1.15rem] border border-[#e1e1dc] bg-[#fbfbfa] p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-[0.86rem] font-medium tracking-[-0.02em] text-[#565656]">
+                          Available books
+                        </p>
+                        <p className="mt-1 text-[0.78rem] font-medium tracking-[-0.01em] text-[#8a8a93]">
+                          Book Store titles can be prepared for audio first.
+                        </p>
+                      </div>
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-[#242424] shadow-[0_8px_20px_rgba(17,17,17,0.06)]">
+                        <WandSparkles className="h-4.5 w-4.5" strokeWidth={1.8} />
+                      </div>
+                    </div>
+
+                    <div className="mt-4 space-y-3">
+                      {audiobookAvailableBooks.length > 0 ? (
+                        <>
+                        {supportedAudiobookBooks.map((book) => {
+                          const readyAudiobook = audiobooks.find(
+                            (audiobook) => audiobook.bookId === book.id,
+                          );
+                          const isPreparing = readyAudiobook?.status === "preparing";
+
+                          return (
+                            <div
+                              key={`available-audio-${book.id}`}
+                              className="flex items-center gap-3 rounded-[1rem] border border-[#e4e4df] bg-white p-3 shadow-[0_10px_26px_rgba(17,17,17,0.04)]"
+                            >
+                              <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded-[0.75rem] bg-[#efefed]">
+                                {book.coverUrl ? (
+                                  <Image
+                                    src={book.coverUrl}
+                                    alt={`${book.title} cover`}
+                                    fill
+                                    unoptimized
+                                    className="object-cover"
+                                  />
+                                ) : (
+                                  <div className="flex h-full items-center justify-center">
+                                    <BookOpen className="h-5 w-5 text-[#85858d]" strokeWidth={1.8} />
+                                  </div>
+                                )}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-[0.9rem] font-medium tracking-[-0.025em] text-[#2b2b30]">
+                                  {book.title}
+                                </p>
+                                <p className="mt-1 truncate text-[0.76rem] font-medium tracking-[-0.01em] text-[#8a8a93]">
+                                  {isPreparing
+                                    ? `Preparing in ${readyAudiobook.voiceName}...`
+                                    : readyAudiobook
+                                    ? `Ready in ${readyAudiobook.voiceName}`
+                                    : book.author}
+                                </p>
+                                {isPreparing ? (
+                                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#ececea]">
+                                    <div
+                                      className="h-full rounded-full bg-[#191919] transition-all duration-300"
+                                      style={{ width: `${readyAudiobook.progress}%` }}
+                                    />
+                                  </div>
+                                ) : null}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => openAudiobookVoicePicker(book.id)}
+                                disabled={isPreparing}
+                                className="min-h-10 rounded-[0.85rem] bg-[#191919] px-3 text-[0.78rem] font-medium tracking-[-0.02em] text-white transition-colors hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/15 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {isPreparing ? "Preparing" : readyAudiobook ? "Change voice" : "Convert"}
+                              </button>
+                            </div>
+                          );
+                        })}
+                        {unsupportedAudiobookBooks.map((book) => (
+                          <div
+                            key={`audio-coming-soon-${book.id}`}
+                            className="flex items-center gap-3 rounded-[1rem] border border-dashed border-[#e4e4df] bg-white/70 p-3"
+                          >
+                            <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded-[0.75rem] bg-[#efefed] opacity-70">
+                              {book.coverUrl ? (
+                                <Image
+                                  src={book.coverUrl}
+                                  alt={`${book.title} cover`}
+                                  fill
+                                  unoptimized
+                                  className="object-cover"
+                                />
+                              ) : (
+                                <div className="flex h-full items-center justify-center">
+                                  <BookOpen className="h-5 w-5 text-[#85858d]" strokeWidth={1.8} />
+                                </div>
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-[0.9rem] font-medium tracking-[-0.025em] text-[#2b2b30]">
+                                {book.title}
+                              </p>
+                              <p className="mt-1 truncate text-[0.76rem] font-medium tracking-[-0.01em] text-[#8a8a93]">
+                                Audiobook conversion for uploaded books is coming soon.
+                              </p>
+                            </div>
+                            <span className="rounded-full bg-[#f1f0ed] px-3 py-1 text-[0.74rem] font-medium tracking-[-0.01em] text-[#77777f]">
+                              Coming soon
+                            </span>
+                          </div>
+                        ))}
+                        </>
+                      ) : (
+                        <div className="rounded-[1rem] border border-dashed border-[#deded8] bg-white px-4 py-8 text-center">
+                          <Headphones
+                            className="mx-auto h-8 w-8 text-[#8a8a93]"
+                            strokeWidth={1.7}
+                          />
+                          <p className="mt-3 text-[0.9rem] font-medium tracking-[-0.02em] text-[#34343a]">
+                            No readable books yet
+                          </p>
+                          <p className="mt-1 text-[0.78rem] font-medium tracking-[-0.01em] text-[#8a8a93]">
+                            Add the Book Store title to Read first.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </article>
+
+                  <article className="rounded-[1.15rem] border border-[#e1e1dc] bg-white p-4 shadow-[0_16px_40px_rgba(17,17,17,0.05)]">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-[0.86rem] font-medium tracking-[-0.02em] text-[#565656]">
+                          Ready audiobooks
+                        </p>
+                        <p className="mt-1 text-[0.78rem] font-medium tracking-[-0.01em] text-[#8a8a93]">
+                          This first pass prepares the provided Steve Jobs excerpt only.
+                        </p>
+                      </div>
+                      <div className="rounded-full bg-[#f1f0ed] px-3 py-1 text-[0.76rem] font-medium tracking-[-0.01em] text-[#757575]">
+                        {audiobooks.filter((audiobook) => audiobook.status === "ready").length} ready
+                      </div>
+                    </div>
+
+                    <div className="mt-4 space-y-3">
+                      {audiobooks.length > 0 ? (
+                        audiobooks.map((audiobook) => (
+                          <div
+                            key={audiobook.id}
+                            className="flex items-center gap-3 rounded-[1rem] border border-[#e4e4df] bg-[#fbfbfa] p-3"
+                          >
+                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[radial-gradient(circle_at_30%_30%,#b9d5ff_0%,#6f98ce_38%,#2d405c_78%)] text-white">
+                              <Headphones className="h-5 w-5" strokeWidth={1.9} />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-[0.9rem] font-medium tracking-[-0.025em] text-[#2b2b30]">
+                                {audiobook.title}
+                              </p>
+                              <p className="mt-1 truncate text-[0.76rem] font-medium tracking-[-0.01em] text-[#8a8a93]">
+                                {audiobook.voiceName} voice
+                              </p>
+                              {audiobook.status === "preparing" ? (
+                                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#ececea]">
+                                  <div
+                                    className="h-full rounded-full bg-[#191919] transition-all duration-300"
+                                    style={{ width: `${audiobook.progress}%` }}
+                                  />
+                                </div>
+                              ) : null}
+                            </div>
+                            {audiobook.status === "ready" ? (
+                              <button
+                                type="button"
+                                onClick={() => playAudiobook(audiobook)}
+                                className="inline-flex min-h-10 items-center gap-1.5 rounded-full bg-[#191919] px-3 text-[0.74rem] font-medium tracking-[-0.01em] text-white transition-colors hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/15 focus-visible:ring-offset-2"
+                              >
+                                <Volume2 className="h-3.5 w-3.5" strokeWidth={2} />
+                                {speakingAudiobookId === audiobook.id ? "Stop" : "Listen"}
+                              </button>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 rounded-full bg-[#f1f0ed] px-2.5 py-1 text-[0.72rem] font-medium tracking-[-0.01em] text-[#77777f]">
+                                <LoaderCircle className="h-3.5 w-3.5 animate-spin" strokeWidth={2} />
+                                {audiobook.progress}%
+                              </span>
+                            )}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="rounded-[1rem] border border-dashed border-[#deded8] bg-[#fbfbfa] px-4 py-8 text-center">
+                          <Mic2 className="mx-auto h-8 w-8 text-[#8a8a93]" strokeWidth={1.7} />
+                          <p className="mt-3 text-[0.9rem] font-medium tracking-[-0.02em] text-[#34343a]">
+                            No audiobooks ready
+                          </p>
+                          <p className="mt-1 text-[0.78rem] font-medium tracking-[-0.01em] text-[#8a8a93]">
+                            Convert a book and it will appear here.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </article>
+                </div>
+              </section>
               ) : (
               <section className="min-h-full pt-2">
                 <div className="grid justify-items-start gap-5 sm:grid-cols-2 xl:grid-cols-3">
@@ -4230,6 +4694,121 @@ export default function HomePage() {
                 className="rounded-[0.85rem] bg-[#191919] px-4 py-2 text-[0.84rem] font-medium tracking-[-0.02em] text-white transition-colors hover:bg-black disabled:opacity-60"
               >
                 {storeActionLoading === storePromptBookId ? "Adding..." : "Add book"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {audiobookPromptBookId && selectedAudiobookBook ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/20 px-4">
+          <div className="w-full max-w-[620px] rounded-[1.25rem] border border-[#dfdfdb] bg-white p-5 shadow-[0_24px_60px_rgba(17,17,17,0.14)]">
+            <div className="flex items-start gap-4">
+              <div className="relative h-20 w-14 shrink-0 overflow-hidden rounded-[0.8rem] bg-[#efefed]">
+                {selectedAudiobookBook.coverUrl ? (
+                  <Image
+                    src={selectedAudiobookBook.coverUrl}
+                    alt={`${selectedAudiobookBook.title} cover`}
+                    fill
+                    unoptimized
+                    className="object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center">
+                    <BookOpen className="h-5 w-5 text-[#85858d]" strokeWidth={1.8} />
+                  </div>
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[1.08rem] font-semibold tracking-[-0.04em] text-[#191919]">
+                  Choose narrator voice
+                </p>
+                <p className="mt-1 truncate text-[0.88rem] font-medium tracking-[-0.01em] text-[#73737f]">
+                  {selectedAudiobookBook.title}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 space-y-3">
+              {audiobookVoices.map((voice) => {
+                const selected = selectedAudiobookVoiceId === voice.voiceId;
+
+                return (
+                  <div
+                    key={voice.voiceId}
+                    className={`rounded-[1rem] border p-3 transition-colors ${
+                      selected
+                        ? "border-[#cfcfca] bg-[#f6f6f3]"
+                        : "border-[#e4e4df] bg-white hover:bg-[#fbfbfa]"
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="relative mt-1 flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#dce8f8]">
+                        <div className="absolute inset-0 bg-[conic-gradient(from_22deg,#356da9,#d7e7fb,#5b8fca,#eef5ff,#356da9)] opacity-90" />
+                        <div className="absolute h-5 w-5 rounded-full bg-white/45 blur-sm" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-[0.95rem] font-medium tracking-[-0.025em] text-[#202024]">
+                            {voice.name}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedAudiobookVoiceId(voice.voiceId)}
+                            className={`inline-flex min-h-9 items-center gap-1.5 rounded-full px-3 text-[0.76rem] font-medium tracking-[-0.01em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/15 ${
+                              selected
+                                ? "bg-[#191919] text-white"
+                                : "bg-[#f1f0ed] text-[#5f5f66] hover:bg-[#e8e7e3]"
+                            }`}
+                          >
+                            {selected ? <Check className="h-3.5 w-3.5" strokeWidth={2} /> : null}
+                            {selected ? "Selected" : "Select"}
+                          </button>
+                        </div>
+                        <p className="mt-1 text-[0.78rem] font-medium tracking-[-0.01em] text-[#7f7f86]">
+                          {voice.accent} - {voice.gender} - {voice.age}
+                        </p>
+                        <p className="mt-1 text-[0.76rem] leading-5 tracking-[-0.01em] text-[#8a8a93]">
+                          {voice.description}
+                        </p>
+                        {voice.previewUrl ? (
+                          <div className="mt-2 flex items-center gap-2">
+                            <Volume2 className="h-4 w-4 text-[#77777f]" strokeWidth={1.8} />
+                            <audio
+                              controls
+                              preload="none"
+                              src={voice.previewUrl}
+                              className="h-8 w-full max-w-[320px]"
+                            >
+                              <track kind="captions" />
+                            </audio>
+                          </div>
+                        ) : (
+                          <p className="mt-2 text-[0.74rem] font-medium tracking-[-0.01em] text-[#8a8a93]">
+                            Preview available when ElevenLabs generation is connected.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-5 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setAudiobookPromptBookId(null)}
+                className="rounded-[0.85rem] px-4 py-2 text-[0.84rem] font-medium tracking-[-0.02em] text-[#666666] transition-colors hover:bg-[#f3f3f1]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={createAudiobook}
+                className="rounded-[0.85rem] bg-[#191919] px-4 py-2 text-[0.84rem] font-medium tracking-[-0.02em] text-white transition-colors hover:bg-black"
+              >
+                Prepare audiobook
               </button>
             </div>
           </div>
@@ -4334,6 +4913,119 @@ export default function HomePage() {
                         />
                       </div>
                     </div>
+
+                    {readerStatus !== "loading" ? (
+                      <div
+                        className={`pointer-events-none absolute bottom-5 right-6 z-30 flex justify-end transition-[width] duration-200 ${
+                          readerAssistantExpanded
+                            ? "w-[min(430px,calc(100%-3rem))]"
+                            : "w-16"
+                        }`}
+                      >
+                        {!readerAssistantExpanded ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setReaderAssistantExpanded(true);
+                              setReaderAssistantListening(true);
+                            }}
+                            className="pointer-events-auto relative h-16 w-16 overflow-hidden rounded-full bg-white/90 shadow-[0_16px_42px_rgba(42,62,70,0.16),inset_0_0_14px_rgba(24,92,115,0.12)] backdrop-blur transition-transform hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1b88a8]/30"
+                            aria-label="Open voice assistant"
+                          >
+                            <Orb
+                              colors={["#9dd9ee", "#0c7fa6"]}
+                              seed={20260423}
+                              agentState={null}
+                              className="absolute inset-[-10px]"
+                            />
+                          </button>
+                        ) : (
+                        <div
+                          className={`pointer-events-auto relative flex min-h-[66px] w-full items-center overflow-hidden rounded-[1.15rem] border border-[#e5e8e8] bg-white/94 px-3.5 shadow-[0_16px_42px_rgba(42,62,70,0.10)] backdrop-blur transition-colors ${
+                            readerAssistantListening ? "ring-2 ring-[#1b88a8]/15" : ""
+                          }`}
+                        >
+                          <span
+                            className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle,#cbd3d5_1.4px,transparent_1.7px)] opacity-65 [background-size:9px_9px]"
+                            aria-hidden="true"
+                          />
+                          {readerAssistantListening ? (
+                            <>
+                              <span
+                                className="pointer-events-none absolute inset-y-0 left-[18%] w-[34%] bg-[radial-gradient(ellipse_at_center,rgba(34,143,174,0.28),transparent_68%)] motion-safe:animate-pulse"
+                                aria-hidden="true"
+                              />
+                              <span
+                                className="pointer-events-none absolute inset-y-2 right-[26%] w-[26%] rounded-full bg-[#8eb5c0]/20 blur-2xl motion-safe:animate-pulse"
+                                aria-hidden="true"
+                              />
+                            </>
+                          ) : null}
+                          <span
+                            className="pointer-events-none absolute inset-0 bg-gradient-to-r from-white/90 via-white/45 to-white/20"
+                            aria-hidden="true"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setReaderAssistantListening(true)}
+                            className="relative z-10 flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-[0.9rem] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1b88a8]/30"
+                            aria-label="Connect voice assistant"
+                          >
+                            <span className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/85 shadow-[inset_0_0_14px_rgba(24,92,115,0.14)]">
+                              <Orb
+                                colors={["#9dd9ee", "#0c7fa6"]}
+                                seed={20260423}
+                                agentState={readerAssistantListening ? "talking" : null}
+                                className="absolute inset-[-10px]"
+                              />
+                            </span>
+                            <span className="min-w-0 flex-1 overflow-hidden text-[0.78rem] font-medium leading-5 tracking-[-0.03em] text-[#696966] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
+                              {readerAssistantListening
+                                ? "Got it. I’m reading this page with you now, ready to explain what the narrator is trying to say or answer any question as you speak."
+                                : "Mic is off. Tap the mic when you want the assistant to listen."}
+                            </span>
+                          </button>
+                          <div className="relative z-10 ml-2 flex shrink-0 items-center gap-1 text-[#78746e]">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setReaderAssistantListening((currentValue) => !currentValue)
+                              }
+                              className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1b88a8]/30 ${
+                                readerAssistantListening
+                                  ? "bg-[#e8f5f8] hover:bg-[#dff0f5]"
+                                  : "bg-white/60 hover:bg-white/80"
+                              }`}
+                              aria-label={
+                                readerAssistantListening
+                                  ? "Turn microphone off"
+                                  : "Turn microphone on"
+                              }
+                              aria-pressed={readerAssistantListening}
+                            >
+                              <Mic2
+                                className={`h-5.5 w-5.5 ${
+                                  readerAssistantListening ? "text-[#1b7d9d]" : "text-[#78746e]"
+                                }`}
+                                strokeWidth={1.9}
+                              />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setReaderAssistantExpanded(false);
+                                setReaderAssistantListening(false);
+                              }}
+                              className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1b88a8]/30"
+                              aria-label="Close voice assistant"
+                            >
+                              <X className="h-5.5 w-5.5 text-[#78746e]" strokeWidth={1.8} />
+                            </button>
+                          </div>
+                        </div>
+                        )}
+                      </div>
+                    ) : null}
 
                     {readerStatus === "loading" ||
                     (shouldRenderPreviewFrame && !readerPreviewReady && !readerEngineReady) ? (
