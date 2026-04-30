@@ -1,8 +1,20 @@
 # Prism
 
-Prism is an AI reading app for opening EPUB books quickly, reading them in a clean Apple Books-style interface, tracking reading progress, preparing audiobook previews, and talking with a voice companion about the exact page currently on screen.
+Prism lets you upload any EPUB and instantly turn it into a clean, distraction free reading experience in your browser. It preserves formatting, handles large books smoothly, and gives you full control over how you read font, layout, and navigation without needing any external apps or downloads.
+
+Beyond reading, Prism transforms books into natural sounding audiobooks using ElevenLabs, while an AI companion helps you understand what you read. You can ask questions, get summaries, and explore ideas in real time, making reading more interactive, accessible, and deeply engaging.
 
 Built using the open source IDE [Zed](https://zed.dev/) and voice technology from [ElevenLabs](https://elevenlabs.io/).
+
+<img width="1166" height="793" alt="Screenshot 2026-04-30 at 9 43 30 PM" src="https://github.com/user-attachments/assets/e75f7598-4209-4931-aeb3-bba5892a0bac" />
+
+
+
+<img width="1165" height="786" alt="Screenshot 2026-04-30 at 9 44 10 PM" src="https://github.com/user-attachments/assets/3f286c2a-07bf-453a-92db-649dc07d8aef" />
+
+
+
+<img width="1165" height="789" alt="Screenshot 2026-04-30 at 9 44 27 PM" src="https://github.com/user-attachments/assets/4c512b12-0a33-46bb-8943-56fd2e73e217" />
 
 ## What Prism Does
 
