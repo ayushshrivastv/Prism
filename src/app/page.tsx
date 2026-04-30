@@ -2422,26 +2422,15 @@ export default function HomePage() {
     useState<(typeof timeRanges)[number]>("24h");
   const [comingSoonLabel, setComingSoonLabel] = useState<string | null>(null);
   const [books, setBooks] = useState<Book[]>(initialBooks);
-  const [audiobooks, setAudiobooks] = useState<Audiobook[]>(loadAudiobooks);
+  const [audiobooks, setAudiobooks] = useState<Audiobook[]>([]);
+  const [hasRestoredAudiobooks, setHasRestoredAudiobooks] = useState(false);
   const [audiobookPromptBookId, setAudiobookPromptBookId] = useState<string | null>(null);
   const [selectedAudiobookVoiceId, setSelectedAudiobookVoiceId] = useState(
     defaultElevenLabsVoiceId,
   );
   const [speakingAudiobookId, setSpeakingAudiobookId] = useState<string | null>(null);
-  const [realReadingSessions, setRealReadingSessions] = useState<ReadingSession[]>(() => {
-    if (typeof window === "undefined") return [];
-
-    try {
-      const storedSessions = window.localStorage.getItem(READING_SESSIONS_KEY);
-      if (!storedSessions) return [];
-
-      const parsedSessions = JSON.parse(storedSessions) as ReadingSession[];
-      return Array.isArray(parsedSessions) ? parsedSessions : [];
-    } catch (error) {
-      console.error("Unable to parse stored reading sessions.", error);
-      return [];
-    }
-  });
+  const [realReadingSessions, setRealReadingSessions] = useState<ReadingSession[]>([]);
+  const [hasRestoredReadingSessions, setHasRestoredReadingSessions] = useState(false);
   const [openMenuBookId, setOpenMenuBookId] = useState<string | null>(null);
   const [storePromptBookId, setStorePromptBookId] = useState<string | null>(null);
   const [storeActionLoading, setStoreActionLoading] = useState<string | null>(null);
@@ -3828,6 +3817,37 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
+    const frameId = window.requestAnimationFrame(() => {
+      try {
+        const storedSessions = window.localStorage.getItem(READING_SESSIONS_KEY);
+        if (!storedSessions) {
+          setHasRestoredReadingSessions(true);
+          return;
+        }
+
+        const parsedSessions = JSON.parse(storedSessions) as ReadingSession[];
+        setRealReadingSessions(Array.isArray(parsedSessions) ? parsedSessions : []);
+      } catch (error) {
+        console.error("Unable to parse stored reading sessions.", error);
+        setRealReadingSessions([]);
+      } finally {
+        setHasRestoredReadingSessions(true);
+      }
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, []);
+
+  useEffect(() => {
+    const frameId = window.requestAnimationFrame(() => {
+      setAudiobooks(loadAudiobooks());
+      setHasRestoredAudiobooks(true);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, []);
+
+  useEffect(() => {
     const uploadedSummaries = books.filter(
       (book) => book.source === "upload" && book.uploadStatus === "ready",
     );
@@ -3839,15 +3859,19 @@ export default function HomePage() {
   }, [books]);
 
   useEffect(() => {
+    if (!hasRestoredReadingSessions) return;
+
     window.localStorage.setItem(
       READING_SESSIONS_KEY,
       JSON.stringify(realReadingSessions),
     );
-  }, [realReadingSessions]);
+  }, [hasRestoredReadingSessions, realReadingSessions]);
 
   useEffect(() => {
+    if (!hasRestoredAudiobooks) return;
+
     window.localStorage.setItem(AUDIOBOOKS_KEY, JSON.stringify(audiobooks));
-  }, [audiobooks]);
+  }, [audiobooks, hasRestoredAudiobooks]);
 
   useEffect(() => {
     if (!readerPageContext) return;
