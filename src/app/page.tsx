@@ -10,6 +10,8 @@ import {
 import JSZip from "jszip";
 import Image from "next/image";
 
+import makeSomethingWonderfulMetadata from "../../public/books/make-something-wonderful.metadata.json";
+
 import {
   useCallback,
   useEffect,
@@ -105,15 +107,27 @@ type EpubBookInstance = import("epubjs").Book;
 type EpubRenditionInstance = import("epubjs").Rendition;
 type EpubLocation = import("epubjs").Location;
 type AuthViewState = "loading" | "authenticated" | "unauthenticated";
+type StoreBookMetadata = {
+  bookId: string;
+  title: string;
+  author: string;
+  fileName: string;
+  fileSize: number;
+  path: string;
+  coverUrl: string;
+  packagePath: string;
+  coverHref: string | null;
+  spine: string[];
+};
 
 const UPLOADED_BOOK_SUMMARIES_KEY = "prism-uploaded-book-summaries-v1";
 const READING_SESSIONS_KEY = "prism-reading-sessions-v1";
 const LIBRARY_DB_NAME = "prism-library";
 const LIBRARY_DB_VERSION = 1;
 const LIBRARY_STORE_NAME = "uploaded-books";
-const STORE_BOOK_ID = "store-make-something-wonderful";
-const STORE_BOOK_PATH = "/books/make-something-wonderful.epub";
 const SHOULD_BYPASS_AUTH_IN_DEV = process.env.NODE_ENV === "development";
+const makeSomethingWonderfulStoreMetadata =
+  makeSomethingWonderfulMetadata as StoreBookMetadata;
 
 const initialBooks: Book[] = [
   {
@@ -235,12 +249,16 @@ type PageView = "home" | "read" | "store";
 
 const storeBooks = [
   {
-    id: STORE_BOOK_ID,
-    title: "Make Something Wonderful",
-    author: "Steve Jobs",
-    fileName: "make-something-wonderful.epub",
-    path: STORE_BOOK_PATH,
-    coverUrl: "/books/make-something-wonderful-cover.jpg",
+    id: makeSomethingWonderfulStoreMetadata.bookId,
+    title: makeSomethingWonderfulStoreMetadata.title,
+    author: makeSomethingWonderfulStoreMetadata.author,
+    fileName: makeSomethingWonderfulStoreMetadata.fileName,
+    path: makeSomethingWonderfulStoreMetadata.path,
+    coverUrl: makeSomethingWonderfulStoreMetadata.coverUrl,
+    fileSize: makeSomethingWonderfulStoreMetadata.fileSize,
+    spine: makeSomethingWonderfulStoreMetadata.spine,
+    packagePath: makeSomethingWonderfulStoreMetadata.packagePath,
+    coverHref: makeSomethingWonderfulStoreMetadata.coverHref,
   },
 ] as const;
 
@@ -2320,8 +2338,29 @@ export default function HomePage() {
     const cachedRecord =
       uploadedBookDataRef.current[storeBookId] ?? (await loadUploadedBookRecord(storeBookId));
     if (cachedRecord) {
-      uploadedBookDataRef.current[storeBookId] = cachedRecord;
-      return cachedRecord;
+      const normalizedRecord: UploadedBookData = {
+        ...cachedRecord,
+        title: storeBook.title,
+        author: storeBook.author,
+        coverUrl: storeBook.coverUrl,
+        fileName: storeBook.fileName,
+        fileSize: cachedRecord.fileSize || storeBook.fileSize,
+        spine: cachedRecord.spine.length > 0 ? cachedRecord.spine : [...storeBook.spine],
+      };
+
+      uploadedBookDataRef.current[storeBookId] = normalizedRecord;
+      if (
+        cachedRecord.title !== normalizedRecord.title ||
+        cachedRecord.author !== normalizedRecord.author ||
+        cachedRecord.coverUrl !== normalizedRecord.coverUrl ||
+        cachedRecord.fileName !== normalizedRecord.fileName ||
+        cachedRecord.fileSize !== normalizedRecord.fileSize ||
+        cachedRecord.spine.length !== normalizedRecord.spine.length
+      ) {
+        await saveUploadedBookRecord(normalizedRecord);
+      }
+
+      return normalizedRecord;
     }
 
     const existingPromise = storeBookRecordPromisesRef.current[storeBookId];
@@ -2342,10 +2381,10 @@ export default function HomePage() {
         author: storeBook.author,
         coverUrl: storeBook.coverUrl,
         fileName: storeBook.fileName,
-        fileSize: rawFile.byteLength,
+        fileSize: storeBook.fileSize || rawFile.byteLength,
         uploadedAt: new Date().toISOString(),
         rawFile,
-        spine: [],
+        spine: [...storeBook.spine],
       };
 
       uploadedBookDataRef.current[storeBook.id] = storedRecord;
@@ -2653,15 +2692,15 @@ export default function HomePage() {
             title: selectedStoreBook.title,
             author: selectedStoreBook.author,
             progress: 0,
-            totalPages: 0,
+            totalPages: selectedStoreBook.spine.length,
             currentPage: 0,
             status: "reading",
             coverUrl: selectedStoreBook.coverUrl,
             source: "upload",
             uploadStatus: "ready",
             uploadProgress: 100,
-            uploadLoadedBytes: 0,
-            uploadTotalBytes: 0,
+            uploadLoadedBytes: selectedStoreBook.fileSize,
+            uploadTotalBytes: selectedStoreBook.fileSize,
             errorMessage: null,
           },
         ]),
@@ -2791,6 +2830,16 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
+    if (!shouldSkipAuth && authStatus !== "authenticated") return;
+
+    storeBooks.forEach((storeBook) => {
+      void ensureStoreBookRecord(storeBook.id).catch((error) => {
+        console.error("Unable to pre-cache bundled bookstore book.", error);
+      });
+    });
+  }, [authStatus, ensureStoreBookRecord, shouldSkipAuth]);
+
+  useEffect(() => {
     const storedSummaries = window.localStorage.getItem(UPLOADED_BOOK_SUMMARIES_KEY);
     if (storedSummaries) {
       try {
@@ -2818,18 +2867,28 @@ export default function HomePage() {
         }));
         const uploadedBooksFromStorage: Book[] = records.map((record) => ({
           id: record.bookId,
-          title: record.title,
-          author: record.author,
+          title: storeBooks.find((storeBook) => storeBook.id === record.bookId)?.title ?? record.title,
+          author:
+            storeBooks.find((storeBook) => storeBook.id === record.bookId)?.author ??
+            record.author,
           progress: 0,
-          totalPages: 0,
+          totalPages:
+            storeBooks.find((storeBook) => storeBook.id === record.bookId)?.spine.length ??
+            record.spine.length,
           currentPage: 0,
           status: "reading",
-          coverUrl: record.coverUrl,
+          coverUrl:
+            storeBooks.find((storeBook) => storeBook.id === record.bookId)?.coverUrl ??
+            record.coverUrl,
           source: "upload",
           uploadStatus: "ready",
           uploadProgress: 100,
-          uploadLoadedBytes: record.fileSize,
-          uploadTotalBytes: record.fileSize,
+          uploadLoadedBytes:
+            storeBooks.find((storeBook) => storeBook.id === record.bookId)?.fileSize ??
+            record.fileSize,
+          uploadTotalBytes:
+            storeBooks.find((storeBook) => storeBook.id === record.bookId)?.fileSize ??
+            record.fileSize,
           errorMessage: null,
         }));
 
