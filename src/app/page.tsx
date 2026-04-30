@@ -3832,3 +3832,106 @@ export default function HomePage() {
                               <div className="flex h-full items-center justify-center">
                                 <BookOpen
                                   className="h-10 w-10 text-[#85858d]"
+                                  strokeWidth={1.8}
+                                />
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="mt-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="truncate text-[0.9rem] font-medium tracking-[-0.025em] text-[#2b2b30]">
+                                {book.title}
+                              </p>
+                              {book.uploadStatus === "ready" ? (
+                                <div className="relative">
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setOpenMenuBookId((currentId) =>
+                                        currentId === book.id ? null : book.id,
+                                      );
+                                    }}
+                                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#7f7f86] transition-colors hover:bg-[#ececea] hover:text-[#25252a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/10"
+                                  >
+                                    <Ellipsis className="h-4.5 w-4.5" strokeWidth={2} />
+                                  </button>
+
+                                  {openMenuBookId === book.id ? (
+                                    <div
+                                      className="absolute right-0 top-8 z-20 min-w-[92px] rounded-[0.8rem] border border-[#dfdfdb] bg-white p-1 shadow-[0_12px_30px_rgba(17,17,17,0.08)]"
+                                      onClick={(event) => event.stopPropagation()}
+                                    >
+                                      <button
+                                        type="button"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          void removeUploadedBook(book.id);
+                                        }}
+                                        className="w-full rounded-[0.6rem] px-3 py-2 text-left text-[0.76rem] font-medium text-[#aa4e4e] transition-colors hover:bg-[#f8f2f2]"
+                                      >
+                                        Remove
+                                      </button>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                            </div>
+                            {book.uploadStatus === "uploading" ? (
+                              <div className="mt-2">
+                                <p className="truncate text-[0.76rem] font-medium tracking-[-0.01em] text-[#8a8a93]">
+                                  Uploading book...
+                                </p>
+                                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#ececea]">
+                                  <div
+                                    className="h-full rounded-full bg-[#7f56d9] transition-all duration-200"
+                                    style={{ width: `${book.uploadProgress ?? 0}%` }}
+                                  />
+                                </div>
+                                <p className="mt-2 text-[0.74rem] font-medium tracking-[-0.01em] text-[#8a8a93]">
+                                  {formatStorageProgress(
+                                    book.uploadLoadedBytes,
+                                    book.uploadTotalBytes,
+                                  )}
+                                </p>
+                              </div>
+                            ) : book.uploadStatus === "error" ? (
+                              <p className="mt-2 text-[0.76rem] font-medium tracking-[-0.01em] text-[#b55151]">
+                                {book.errorMessage}
+                              </p>
+                            ) : (
+                              <>
+                                <p className="mt-1 truncate text-[0.76rem] font-medium tracking-[-0.01em] text-[#8a8a93]">
+                                  {book.author}
+                                </p>
+                                <p className="mt-2 text-[0.76rem] font-medium tracking-[-0.01em] text-[#8a8a93]">
+                                  {book.progress}% read
+                                </p>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+              </section>
+              ) : (
+              <section className="min-h-full pt-2">
+                <div className="grid justify-items-start gap-5 sm:grid-cols-2 xl:grid-cols-3">
+                  {storeBooks.map((book) => {
+                    const readingListBook = books.find((existingBook) => existingBook.id === book.id);
+                    const displayTitle = readingListBook?.title ?? book.title;
+                    const displayAuthor = readingListBook?.author ?? book.author;
+                    const displayCoverUrl = readingListBook?.coverUrl ?? book.coverUrl ?? null;
+
+                    return (
+                      <article
+                        key={book.id}
+                        className="w-full max-w-[272px] justify-self-start rounded-[1.2rem] border border-[#e1e1dc] bg-white p-4 shadow-[0_16px_40px_rgba(17,17,17,0.06)]"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setStorePromptBookId(book.id)}
+                          className="w-full text-left"
+                        >
