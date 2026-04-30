@@ -87,6 +87,13 @@ type ReadingSession = {
   pages: number;
 };
 
+type StoreBookProgress = {
+  progress: number;
+  totalPages: number;
+  currentPage: number;
+  status: "reading" | "finished";
+};
+
 type ReaderFastPreview = {
   url: string;
   cleanupUrls: string[];
@@ -121,6 +128,8 @@ type StoreBookMetadata = {
 };
 
 const UPLOADED_BOOK_SUMMARIES_KEY = "prism-uploaded-book-summaries-v1";
+const STORE_BOOK_PROGRESS_KEY = "prism-store-book-progress-v1";
+const STORE_BOOK_READING_LIST_KEY = "prism-store-book-reading-list-v1";
 const READING_SESSIONS_KEY = "prism-reading-sessions-v1";
 const LIBRARY_DB_NAME = "prism-library";
 const LIBRARY_DB_VERSION = 1;
@@ -261,6 +270,52 @@ const storeBooks = [
     coverHref: makeSomethingWonderfulStoreMetadata.coverHref,
   },
 ] as const;
+
+function isStoreBookId(bookId: string) {
+  return storeBooks.some((book) => book.id === bookId);
+}
+
+function loadStoreBookProgressRecords() {
+  if (typeof window === "undefined") return {};
+
+  try {
+    const storedProgress = window.localStorage.getItem(STORE_BOOK_PROGRESS_KEY);
+    if (!storedProgress) return {};
+
+    const parsedProgress = JSON.parse(storedProgress) as Record<string, StoreBookProgress>;
+    return parsedProgress && typeof parsedProgress === "object" ? parsedProgress : {};
+  } catch (error) {
+    console.error("Unable to parse stored bookstore progress.", error);
+    return {};
+  }
+}
+
+function saveStoreBookProgressRecords(progressRecords: Record<string, StoreBookProgress>) {
+  if (typeof window === "undefined") return;
+
+  window.localStorage.setItem(STORE_BOOK_PROGRESS_KEY, JSON.stringify(progressRecords));
+}
+
+function loadStoreBookReadingListIds() {
+  if (typeof window === "undefined") return new Set<string>();
+
+  try {
+    const storedIds = window.localStorage.getItem(STORE_BOOK_READING_LIST_KEY);
+    if (!storedIds) return new Set<string>();
+
+    const parsedIds = JSON.parse(storedIds) as string[];
+    return new Set(Array.isArray(parsedIds) ? parsedIds.filter((id) => isStoreBookId(id)) : []);
+  } catch (error) {
+    console.error("Unable to parse stored bookstore reading list.", error);
+    return new Set<string>();
+  }
+}
+
+function saveStoreBookReadingListIds(bookIds: Set<string>) {
+  if (typeof window === "undefined") return;
+
+  window.localStorage.setItem(STORE_BOOK_READING_LIST_KEY, JSON.stringify(Array.from(bookIds)));
+}
 
 const dashboardNow = new Date("2026-04-23T01:30:00+05:30");
 const THIRTY_DAY_DUMMY_BOOK = {
@@ -2171,6 +2226,10 @@ export default function HomePage() {
   const readerWheelLockRef = useRef(0);
   const readerPreviewCleanupUrlsRef = useRef<string[]>([]);
   const readerPreviewSpreadIndexRef = useRef(0);
+  const storeBookProgressRef = useRef<Record<string, StoreBookProgress>>(
+    loadStoreBookProgressRecords(),
+  );
+  const storeBookReadingListRef = useRef<Set<string>>(loadStoreBookReadingListIds());
   const activeProgress = buildReadingProgress(selectedRange, books, realReadingSessions);
   const uploadedBooks = books.filter((book) => book.source === "upload");
   const addedBookIds = new Set(uploadedBooks.map((book) => book.id));
@@ -2606,6 +2665,19 @@ export default function HomePage() {
     readerSessionTotalPagesRef.current = nextTotalPages;
     readerSessionProgressRef.current = nextProgress;
 
+    if (isStoreBookId(activeBookId)) {
+      storeBookProgressRef.current = {
+        ...storeBookProgressRef.current,
+        [activeBookId]: {
+          progress: nextProgress,
+          totalPages: nextTotalPages,
+          currentPage: nextCurrentPage,
+          status: nextProgress >= 100 ? "finished" : "reading",
+        },
+      };
+      saveStoreBookProgressRecords(storeBookProgressRef.current);
+    }
+
     setBooks((currentBooks) =>
       currentBooks.map((book) =>
         book.id === activeBookId
@@ -2693,6 +2765,29 @@ export default function HomePage() {
   };
 
   const removeUploadedBook = async (bookId: string) => {
+    const bookToRemove = books.find((book) => book.id === bookId);
+
+    if (bookToRemove && isStoreBookId(bookId)) {
+      const nextStoreBookIds = new Set(storeBookReadingListRef.current);
+      nextStoreBookIds.delete(bookId);
+      storeBookReadingListRef.current = nextStoreBookIds;
+      saveStoreBookReadingListIds(nextStoreBookIds);
+
+      storeBookProgressRef.current = {
+        ...storeBookProgressRef.current,
+        [bookId]: {
+          progress: bookToRemove.progress,
+          totalPages: bookToRemove.totalPages,
+          currentPage: bookToRemove.currentPage,
+          status: bookToRemove.status,
+        },
+      };
+      saveStoreBookProgressRecords(storeBookProgressRef.current);
+      setBooks((currentBooks) => currentBooks.filter((book) => book.id !== bookId));
+      setOpenMenuBookId(null);
+      return;
+    }
+
     setBooks((currentBooks) => currentBooks.filter((book) => book.id !== bookId));
     delete uploadedBookDataRef.current[bookId];
     setOpenMenuBookId(null);
@@ -2712,6 +2807,10 @@ export default function HomePage() {
 
     const existingBook = books.find((book) => book.id === selectedStoreBook.id);
     if (existingBook) {
+      const nextStoreBookIds = new Set(storeBookReadingListRef.current);
+      nextStoreBookIds.add(selectedStoreBook.id);
+      storeBookReadingListRef.current = nextStoreBookIds;
+      saveStoreBookReadingListIds(nextStoreBookIds);
       setStorePromptBookId(null);
       setCurrentPage("read");
       void ensureStoreBookRecord(selectedStoreBook.id).catch((error) => {
@@ -2723,16 +2822,22 @@ export default function HomePage() {
     setStoreActionLoading(storeBookId);
 
     try {
+      const savedProgress = storeBookProgressRef.current[selectedStoreBook.id];
+      const nextStoreBookIds = new Set(storeBookReadingListRef.current);
+      nextStoreBookIds.add(selectedStoreBook.id);
+      storeBookReadingListRef.current = nextStoreBookIds;
+      saveStoreBookReadingListIds(nextStoreBookIds);
+
       setBooks((currentBooks) =>
         mergeBooks(currentBooks, [
           {
             id: selectedStoreBook.id,
             title: selectedStoreBook.title,
             author: selectedStoreBook.author,
-            progress: 0,
-            totalPages: selectedStoreBook.spine.length,
-            currentPage: 0,
-            status: "reading",
+            progress: savedProgress?.progress ?? 0,
+            totalPages: savedProgress?.totalPages ?? selectedStoreBook.spine.length,
+            currentPage: savedProgress?.currentPage ?? 0,
+            status: savedProgress?.status ?? "reading",
             coverUrl: selectedStoreBook.coverUrl,
             source: "upload",
             uploadStatus: "ready",
@@ -2883,9 +2988,17 @@ export default function HomePage() {
 
   useEffect(() => {
     const storedSummaries = window.localStorage.getItem(UPLOADED_BOOK_SUMMARIES_KEY);
+    let parsedSummaries: Book[] = [];
+
     if (storedSummaries) {
       try {
-        const parsedSummaries = JSON.parse(storedSummaries) as Book[];
+        const savedStoreBookIds = storeBookReadingListRef.current;
+        const restoredSummaries = JSON.parse(storedSummaries) as Book[];
+        parsedSummaries = Array.isArray(restoredSummaries)
+          ? restoredSummaries.filter(
+              (book) => !isStoreBookId(book.id) || savedStoreBookIds.has(book.id),
+            )
+          : [];
         window.requestAnimationFrame(() => {
           setBooks((currentBooks) => mergeBooks(currentBooks, parsedSummaries));
         });
@@ -2896,6 +3009,11 @@ export default function HomePage() {
 
     loadUploadedBookRecords()
       .then((records) => {
+        const summaryById = new Map(parsedSummaries.map((book) => [book.id, book]));
+        const recordsInReadingList = records.filter((record) => {
+          if (!isStoreBookId(record.bookId)) return true;
+          return storeBookReadingListRef.current.has(record.bookId);
+        });
         const normalizedRecords = records.map((record) => ({
           bookId: record.bookId,
           title: record.title,
@@ -2907,32 +3025,32 @@ export default function HomePage() {
           rawFile: record.rawFile,
           spine: record.spine,
         }));
-        const uploadedBooksFromStorage: Book[] = records.map((record) => ({
-          id: record.bookId,
-          title: storeBooks.find((storeBook) => storeBook.id === record.bookId)?.title ?? record.title,
-          author:
-            storeBooks.find((storeBook) => storeBook.id === record.bookId)?.author ??
-            record.author,
-          progress: 0,
-          totalPages:
-            storeBooks.find((storeBook) => storeBook.id === record.bookId)?.spine.length ??
-            record.spine.length,
-          currentPage: 0,
-          status: "reading",
-          coverUrl:
-            storeBooks.find((storeBook) => storeBook.id === record.bookId)?.coverUrl ??
-            record.coverUrl,
-          source: "upload",
-          uploadStatus: "ready",
-          uploadProgress: 100,
-          uploadLoadedBytes:
-            storeBooks.find((storeBook) => storeBook.id === record.bookId)?.fileSize ??
-            record.fileSize,
-          uploadTotalBytes:
-            storeBooks.find((storeBook) => storeBook.id === record.bookId)?.fileSize ??
-            record.fileSize,
-          errorMessage: null,
-        }));
+        const uploadedBooksFromStorage: Book[] = recordsInReadingList.map((record) => {
+          const storeBook = storeBooks.find((book) => book.id === record.bookId);
+          const storedSummary = summaryById.get(record.bookId);
+          const savedProgress = storeBookProgressRef.current[record.bookId];
+
+          return {
+            id: record.bookId,
+            title: storeBook?.title ?? record.title,
+            author: storeBook?.author ?? record.author,
+            progress: storedSummary?.progress ?? savedProgress?.progress ?? 0,
+            totalPages:
+              storedSummary?.totalPages ??
+              savedProgress?.totalPages ??
+              storeBook?.spine.length ??
+              record.spine.length,
+            currentPage: storedSummary?.currentPage ?? savedProgress?.currentPage ?? 0,
+            status: storedSummary?.status ?? savedProgress?.status ?? "reading",
+            coverUrl: storeBook?.coverUrl ?? record.coverUrl,
+            source: "upload",
+            uploadStatus: "ready",
+            uploadProgress: 100,
+            uploadLoadedBytes: storeBook?.fileSize ?? record.fileSize,
+            uploadTotalBytes: storeBook?.fileSize ?? record.fileSize,
+            errorMessage: null,
+          };
+        });
 
         uploadedBookDataRef.current = Object.fromEntries(
           normalizedRecords.map((record) => [record.bookId, record]),
