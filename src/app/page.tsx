@@ -3624,3 +3624,107 @@ export default function HomePage() {
                           {activeProgress.label} goal: {Math.floor(activeProgress.goal / 60)}h{" "}
                           {activeProgress.goal % 60}m
                         </p>
+                      </div>
+                      <div className="max-w-[210px] rounded-full bg-[#f1f0ed] px-3 py-1 text-[0.76rem] font-medium tracking-[-0.01em] text-[#757575]">
+                        <span className="block truncate">
+                          {activeProgress.topBook.title}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="mt-5">
+                      <div className="h-3 rounded-full bg-[#ececea]">
+                        <div
+                          className="h-full rounded-full bg-[linear-gradient(90deg,#7f56d9_0%,#8d63e3_100%)] transition-all duration-300"
+                          style={{ width: `${progressPercent}%` }}
+                        />
+                      </div>
+                      <div className="mt-2 flex items-center justify-between text-[0.76rem] font-medium tracking-[-0.01em] text-[#929292]">
+                        <span>{activeProgress.minutes} mins logged</span>
+                        <span>{activeProgress.topBook.progress}% complete</span>
+                      </div>
+                    </div>
+
+                    <div className="mt-6 grid grid-cols-12 gap-2">
+                      {activeProgress.bars.map((height, index) => (
+                        <div
+                          key={`${selectedRange}-${index}`}
+                          className="flex h-20 items-end rounded-full bg-[#f3f2ef] px-[3px] py-[4px]"
+                        >
+                          <div
+                            className="w-full rounded-full bg-[linear-gradient(180deg,#8d63e3_0%,#7f56d9_100%)]"
+                            style={{ height: `${height}%` }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+
+                  <article className="px-4 py-4">
+                    <div className="text-[0.86rem] font-medium tracking-[-0.02em] text-[#565656]">
+                      <span>Reading progress</span>
+                    </div>
+
+                    <div className="mt-4 space-y-4">
+                      <div className="rounded-[1rem] bg-[#f6f5f2] px-4 py-3">
+                        <p className="text-[0.76rem] font-medium uppercase tracking-[0.08em] text-[#8b8b8b]">
+                          Pages read
+                        </p>
+                        <p className="mt-1 text-[1.56rem] font-semibold tracking-[-0.055em] text-[#272727]">
+                          {activeProgress.pagesRead}
+                        </p>
+                      </div>
+
+                      <div className="rounded-[1rem] bg-[#f6f5f2] px-4 py-3">
+                        <p className="text-[0.76rem] font-medium uppercase tracking-[0.08em] text-[#8b8b8b]">
+                          Consistency
+                        </p>
+                        <p className="mt-1 text-[0.98rem] font-semibold tracking-[-0.03em] text-[#2f2f2f]">
+                          {activeProgress.streak}
+                        </p>
+                      </div>
+
+                      <div className="rounded-[1rem] border border-[#e5e4df] px-4 py-3">
+                        <p className="text-[0.76rem] font-medium uppercase tracking-[0.08em] text-[#8b8b8b]">
+                          Current book
+                        </p>
+                        <p className="mt-1 text-[0.98rem] font-semibold tracking-[-0.03em] text-[#2f2f2f]">
+                          {activeProgress.currentBook}
+                        </p>
+                        <p className="mt-1 text-[0.8rem] font-medium tracking-[-0.01em] text-[#7a7a7a]">
+                          {activeProgress.chapter}
+                        </p>
+                        <p className="mt-1 text-[0.78rem] font-medium tracking-[-0.01em] text-[#9a9a9a]">
+                          {activeProgress.currentAuthor}
+                        </p>
+                      </div>
+                    </div>
+                  </article>
+                </div>
+
+                <article className="border-t border-[#dfdfdb] px-4 py-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-[0.86rem] font-medium tracking-[-0.02em] text-[#565656]">
+                        Session timeline
+                      </p>
+                      <p className="mt-1 text-[0.78rem] font-medium tracking-[-0.01em] text-[#898989]">
+                        Your reading time across the selected range
+                      </p>
+                    </div>
+                    <div className="rounded-full bg-[#f1f0ed] px-3 py-1 text-[0.76rem] font-medium tracking-[-0.01em] text-[#757575]">
+                      {selectedRange}
+                    </div>
+                  </div>
+
+                  <svg
+                    className="mt-4 h-[92px] w-full"
+                    viewBox={`0 0 ${timelineChart.width} ${timelineChart.height}`}
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d={`M20 ${timelineChart.baselineY}H1100`}
+                      stroke="#ebe7f6"
+                      strokeWidth="4"
+                      strokeLinecap="round"
